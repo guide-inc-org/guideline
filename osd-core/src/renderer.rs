@@ -41,9 +41,9 @@ impl Default for Config {
         Self {
             padding: 10.5,
             left_margin: 122.5,
-            right_margin: 15.0,
-            participant_gap: 200.0,
-            header_height: 108.0,
+            right_margin: 130.0,
+            participant_gap: 150.0,
+            header_height: 40.0,
             row_height: 32.0,
             participant_width: 90.0,
             font_size: 12.0,
@@ -127,9 +127,9 @@ const MESSAGE_WIDTH_PADDING: f64 = 8.0;
 const MESSAGE_WIDTH_SCALE: f64 = 0.9;
 const DELAY_UNIT: f64 = 18.0;
 const BLOCK_LABEL_HEIGHT: f64 = 24.0;
-const BLOCK_FOOTER_PADDING_LEVEL1: f64 = 0.90625;
-const BLOCK_FOOTER_PADDING_DEEP: f64 = 0.90625;
-const BLOCK_FOOTER_PADDING_TOP_FACTOR: f64 = 1.28125;
+const BLOCK_FOOTER_PADDING_LEVEL1: f64 = 1.5;
+const BLOCK_FOOTER_PADDING_DEEP: f64 = 1.5;
+const BLOCK_FOOTER_PADDING_TOP_FACTOR: f64 = 1.8;
 const BLOCK_ELSE_SPACING_LEVEL1: f64 = 1.1875;
 const BLOCK_ELSE_SPACING_DEEP: f64 = 1.15625;
 const BLOCK_ELSE_TOP_SPACING_FACTOR: f64 = 1.15625;
@@ -138,12 +138,12 @@ const BLOCK_NESTED_FRAME_SHIFT: f64 = 18.0;
 const PARALLEL_BLOCK_GAP: f64 = 22.0;
 const MESSAGE_SPACING_MULT: f64 = 0.5625;
 const SELF_MESSAGE_MIN_SPACING: f64 = 78.0;
-const SELF_MESSAGE_GAP: f64 = 4.0;
+const SELF_MESSAGE_GAP: f64 = 16.0;
 const CREATE_MESSAGE_SPACING: f64 = 41.0;
 const DESTROY_SPACING: f64 = 15.0;
 const NOTE_PADDING: f64 = 9.5;
 const NOTE_LINE_HEIGHT_EXTRA: f64 = 6.0;
-const NOTE_MARGIN: f64 = 12.6;
+const NOTE_MARGIN: f64 = 24.0;
 const STATE_LINE_HEIGHT_EXTRA: f64 = 11.0;
 const REF_LINE_HEIGHT_EXTRA: f64 = 16.333333;
 const ELSE_RETURN_GAP: f64 = 1.0;
@@ -943,7 +943,7 @@ fn collect_block_backgrounds(
 
                 let end_y = state.current_y - state.config.row_height + block_footer_padding(&state.config, depth);
                 let frame_end_y = end_y - frame_shift;
-                state.current_y = end_y + state.config.row_height * 0.5;
+                state.current_y = end_y + state.config.row_height * 1.0;
 
                 // Collect this block's background
                 state.add_block_background(x1, frame_start_y, x2 - x1, frame_end_y - frame_start_y);
@@ -1130,11 +1130,13 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
         FooterStyle::Box => actor_footer_extra(&state.participants, &state.config),
         FooterStyle::Bar | FooterStyle::None => 0.0,
     };
+    let footer_margin = state.config.row_height; // Space between content and footer
     let base_total_height = state.config.padding * 2.0
         + title_space
         + state.config.header_height
-        + footer_space
-        + content_height;
+        + content_height
+        + footer_margin
+        + footer_space;
     let total_height = base_total_height + footer_label_extra;
     let total_width = state.diagram_width();
 
@@ -1517,7 +1519,7 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                             height += inner(else_items, config, depth + 1, else_pending, serial_pending, active_activation_count, parallel_depth);
                             else_pending.pop();
                         }
-                        height += block_footer_padding(config, depth) + config.row_height * 0.5 - config.row_height;
+                        height += block_footer_padding(config, depth) + config.row_height * 1.0 - config.row_height;
                     }
                 }
                 Item::Activate { .. } => {
@@ -2510,7 +2512,7 @@ fn render_block(
     let end_y = state.current_y - state.config.row_height + block_footer_padding(&state.config, depth);
 
     // Set current_y to end of block + margin
-    state.current_y = end_y + state.config.row_height * 0.5;
+    state.current_y = end_y + state.config.row_height * 1.0;
 
     // Block frame, labels, and else separators are rendered later by render_block_labels()
     // which is called after activations are drawn, so labels appear on top

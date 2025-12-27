@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>guideline Demo</title>
+  <title>OpenSequenceDiagrams Demo</title>
   <style>
     body {
       font-family: sans-serif;
-      max-width: 1200px;
+      max-width: 1600px;
       margin: 0 auto;
       padding: 20px;
     }
@@ -35,14 +35,25 @@
     }
     .demo-section {
       display: flex;
+      flex-direction: column;
       gap: 20px;
       margin-bottom: 40px;
     }
     .source {
-      flex: 1;
+      flex: 1 1 auto;
+    }
+    @media (min-width: 1200px) {
+      .demo-section {
+        flex-direction: row;
+      }
+      .source {
+        flex: 0 0 300px;
+        max-width: 300px;
+      }
     }
     .output {
-      flex: 2;
+      flex: 1;
+      min-width: 0;
       border: 1px solid #ddd;
       padding: 10px;
       background: #fafafa;
@@ -96,7 +107,7 @@
   </style>
 </head>
 <body>
-  <h1>guideline Demo</h1>
+  <h1>OpenSequenceDiagrams Demo</h1>
   <p>WebSequenceDiagrams-compatible sequence diagram renderer</p>
 
   <div class="controls">
@@ -182,7 +193,7 @@ note over Customer,Database:Order Complete</textarea>
   </div>
 
   <script type="module">
-    import init, { render, render_with_theme, version } from '../guideline-js/pkg/guideline_wasm.js';
+    import init, { render, render_with_theme, version } from '../osd-js/pkg/osd_wasm.js';
 
     let initialized = false;
 
