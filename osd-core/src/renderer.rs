@@ -240,24 +240,9 @@ fn label_boxes_overlap(x_min: f64, x_max: f64, y_min: f64, y_max: f64, other: &L
     x_overlap && y_overlap
 }
 
-fn actor_footer_extra(participants: &[Participant], config: &Config) -> f64 {
-    let mut extra = 0.0;
-    for p in participants {
-        if p.kind != ParticipantKind::Actor {
-            continue;
-        }
-        let lines = p.name.split("\\n").count();
-        let line_height = if lines > 1 {
-            16.0
-        } else {
-            config.font_size + 2.0
-        };
-        let needed = 15.0 + (lines.saturating_sub(1) as f64 * line_height) + config.font_size;
-        if needed > extra {
-            extra = needed;
-        }
-    }
-    extra
+fn actor_footer_extra(_participants: &[Participant], _config: &Config) -> f64 {
+    // Actor names are now rendered within the header, so no extra footer space needed
+    0.0
 }
 
 fn serial_first_row_gap(parallel_depth: usize) -> f64 {
@@ -414,7 +399,15 @@ impl RenderState {
         for p in &participants {
             let lines = p.name.split("\\n").count();
             let total_height = lines as f64 * line_height;
-            let needed = total_height + 10.0;
+            let needed = match p.kind {
+                ParticipantKind::Participant => total_height + 10.0,
+                ParticipantKind::Actor => {
+                    // Stick figure (38px) + name below + margins
+                    let figure_height = 38.0;
+                    let name_height = lines as f64 * line_height;
+                    figure_height + name_height + 15.0
+                }
+            };
             if needed > required_header_height {
                 required_header_height = needed;
             }
@@ -1652,13 +1645,17 @@ fn render_participant_headers(svg: &mut String, state: &RenderState, y: f64) {
                 }
             }
             ParticipantKind::Actor => {
-                // Stick figure centered in header area
-                let fig_center_y = y + state.config.header_height / 2.0;
+                // Stick figure at top of header area, name below within header
                 let head_r = 8.0;
                 let body_len = 12.0;
-                let arm_y = fig_center_y + 2.0;
                 let arm_len = 10.0;
                 let leg_len = 10.0;
+                let figure_height = 38.0; // head(16) + body(12) + legs(10)
+
+                // Position figure at top with small margin
+                let fig_top = y + 8.0;
+                let fig_center_y = fig_top + head_r + body_len / 2.0;
+                let arm_y = fig_center_y + 2.0;
 
                 // Head
                 writeln!(
@@ -1707,21 +1704,21 @@ fn render_participant_headers(svg: &mut String, state: &RenderState, y: f64) {
                     y2 = fig_center_y + body_len / 2.0 + leg_len
                 )
                 .unwrap();
-                // Name below figure (with multiline support)
+                // Name below figure (within header)
                 let name_lines: Vec<&str> = p.name.split("\\n").collect();
+                let name_start_y = fig_top + figure_height + 5.0;
                 if name_lines.len() == 1 {
                     writeln!(
                         svg,
                         r#"<text x="{x}" y="{y}" class="participant-text">{name}</text>"#,
                         x = x,
-                        y = y + state.config.header_height + 15.0,
+                        y = name_start_y + state.config.font_size,
                         name = escape_xml(&p.name)
                     )
                     .unwrap();
                 } else {
                     // Multiline actor name using tspan
-                    let line_height = 16.0;
-                    let start_y = y + state.config.header_height + 15.0;
+                    let line_height = state.config.font_size + 2.0;
                     writeln!(
                         svg,
                         r#"<text x="{x}" class="participant-text">"#,
@@ -1734,7 +1731,7 @@ fn render_participant_headers(svg: &mut String, state: &RenderState, y: f64) {
                                 svg,
                                 r#"<tspan x="{x}" y="{y}">{text}</tspan>"#,
                                 x = x,
-                                y = start_y,
+                                y = name_start_y + state.config.font_size,
                                 text = escape_xml(line)
                             )
                             .unwrap();
