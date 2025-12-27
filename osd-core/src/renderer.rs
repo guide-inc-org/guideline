@@ -1350,7 +1350,7 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
     .unwrap();
     writeln!(
         &mut svg,
-        ".message-text {{ font-family: {f}; font-size: {s}px; fill: {c}; }}",
+        ".message-text {{ font-family: {f}; font-size: {s}px; fill: {c}; stroke: none; }}",
         f = theme.font_family,
         s = state.config.font_size,
         c = theme.message_text_color
