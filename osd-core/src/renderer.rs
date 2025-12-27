@@ -40,8 +40,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             padding: 10.5,
-            left_margin: 122.5,
-            right_margin: 130.0,
+            left_margin: 40.0,
+            right_margin: 40.0,
             participant_gap: 150.0,
             header_height: 40.0,
             row_height: 32.0,
@@ -50,7 +50,7 @@ impl Default for Config {
             activation_width: 10.0,
             note_padding: 6.0,
             block_margin: 5.0,
-            title_height: 100.0,
+            title_height: 50.0,
             theme: Theme::default(),
         }
     }
@@ -259,6 +259,42 @@ fn state_line_height(config: &Config) -> f64 {
 
 fn ref_line_height(config: &Config) -> f64 {
     config.font_size + REF_LINE_HEIGHT_EXTRA
+}
+
+/// Arrowhead size constant
+const ARROWHEAD_SIZE: f64 = 10.0;
+
+/// Generate arrowhead polygon points for a given end position and direction
+fn arrowhead_points(x: f64, y: f64, direction: f64) -> String {
+    let size = ARROWHEAD_SIZE;
+    let half_width = size * 0.35;
+
+    // Tip of the arrow
+    let tip_x = x;
+    let tip_y = y;
+
+    // Back points of the arrow (rotated by direction)
+    let back_x = x - size * direction.cos();
+    let back_y = y - size * direction.sin();
+
+    // Perpendicular offset for the two back points
+    let perp_x = -direction.sin() * half_width;
+    let perp_y = direction.cos() * half_width;
+
+    format!(
+        "{:.1},{:.1} {:.1},{:.1} {:.1},{:.1}",
+        back_x + perp_x,
+        back_y + perp_y,
+        tip_x,
+        tip_y,
+        back_x - perp_x,
+        back_y - perp_y
+    )
+}
+
+/// Calculate direction angle from (x1, y1) to (x2, y2)
+fn arrow_direction(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
+    (y2 - y1).atan2(x2 - x1)
 }
 
 fn block_has_frame(kind: &BlockKind) -> bool {
@@ -1413,35 +1449,20 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
         c = theme.message_text_color
     )
     .unwrap();
+    // Arrowhead styles
+    writeln!(
+        &mut svg,
+        ".arrowhead {{ fill: {c}; stroke: none; }}",
+        c = theme.message_color
+    )
+    .unwrap();
+    writeln!(
+        &mut svg,
+        ".arrowhead-open {{ fill: none; stroke: {c}; stroke-width: 1; }}",
+        c = theme.message_color
+    )
+    .unwrap();
     svg.push_str("</style>\n");
-
-    // Arrow markers with theme color
-    writeln!(
-        &mut svg,
-        r##"<marker id="arrow-filled" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">"##
-    )
-    .unwrap();
-    writeln!(
-        &mut svg,
-        r##"<polygon points="0 0, 10 3.5, 0 7" fill="{c}"/>"##,
-        c = theme.message_color
-    )
-    .unwrap();
-    svg.push_str("</marker>\n");
-
-    writeln!(
-        &mut svg,
-        r##"<marker id="arrow-open" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">"##
-    )
-    .unwrap();
-    writeln!(
-        &mut svg,
-        r##"<polyline points="0 0, 10 3.5, 0 7" fill="none" stroke="{c}" stroke-width="1"/>"##,
-        c = theme.message_color
-    )
-    .unwrap();
-    svg.push_str("</marker>\n");
-
     svg.push_str("</defs>\n");
 
     // Background with theme color
@@ -2138,10 +2159,7 @@ fn render_message(
         LineStyle::Solid => "message",
         LineStyle::Dashed => "message-dashed",
     };
-    let marker = match arrow.head {
-        ArrowHead::Filled => "url(#arrow-filled)",
-        ArrowHead::Open => "url(#arrow-open)",
-    };
+    let is_filled = matches!(arrow.head, ArrowHead::Filled);
 
     // Get autonumber prefix
     let num_prefix = state
@@ -2176,17 +2194,40 @@ fn render_message(
         let loop_width = 40.0;
         let text_block_height = lines.len() as f64 * line_height;
         let loop_height = (text_block_height + 10.0).max(25.0);
+        let arrow_end_x = x1;
+        let arrow_end_y = y + loop_height;
+        // Arrowhead points left (PI radians)
+        let direction = std::f64::consts::PI;
+        let arrow_points = arrowhead_points(arrow_end_x, arrow_end_y, direction);
+
         writeln!(
             svg,
-            r#"  <path d="M {x1} {y} L {x2} {y} L {x2} {y2} L {x1} {y2}" class="{cls}" marker-end="{marker}"/>"#,
+            r#"  <path d="M {x1} {y} L {x2} {y} L {x2} {y2} L {arrow_x} {y2}" class="{cls}"/>"#,
             x1 = x1,
             y = y,
             x2 = x1 + loop_width,
             y2 = y + loop_height,
-            cls = line_class,
-            marker = marker
+            arrow_x = arrow_end_x + ARROWHEAD_SIZE,
+            cls = line_class
         )
         .unwrap();
+
+        // Draw arrowhead as polygon or polyline
+        if is_filled {
+            writeln!(
+                svg,
+                r#"  <polygon points="{points}" class="arrowhead"/>"#,
+                points = arrow_points
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                svg,
+                r#"  <polyline points="{points}" class="arrowhead-open"/>"#,
+                points = arrow_points
+            )
+            .unwrap();
+        }
 
         // Text - multiline support
         let text_x = x1 + loop_width + 5.0;
@@ -2237,18 +2278,42 @@ fn render_message(
         let text_x = (x1 + x2) / 2.0;
         let text_y = (y + y2) / 2.0 - 8.0;
 
+        // Calculate arrowhead direction and shorten line to not overlap with arrowhead
+        let direction = arrow_direction(x1, y, x2, y2);
+        let arrow_points = arrowhead_points(x2, y2, direction);
+
+        // Shorten the line so it doesn't overlap with the arrowhead
+        let line_end_x = x2 - ARROWHEAD_SIZE * direction.cos();
+        let line_end_y = y2 - ARROWHEAD_SIZE * direction.sin();
+
         // Draw arrow line (slanted if delay)
         writeln!(
             svg,
-            r#"  <line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" class="{cls}" marker-end="{marker}"/>"#,
+            r#"  <line x1="{x1}" y1="{y1}" x2="{lx2}" y2="{ly2}" class="{cls}"/>"#,
             x1 = x1,
             y1 = y,
-            x2 = x2,
-            y2 = y2,
-            cls = line_class,
-            marker = marker
+            lx2 = line_end_x,
+            ly2 = line_end_y,
+            cls = line_class
         )
         .unwrap();
+
+        // Draw arrowhead as polygon or polyline
+        if is_filled {
+            writeln!(
+                svg,
+                r#"  <polygon points="{points}" class="arrowhead"/>"#,
+                points = arrow_points
+            )
+            .unwrap();
+        } else {
+            writeln!(
+                svg,
+                r#"  <polyline points="{points}" class="arrowhead-open"/>"#,
+                points = arrow_points
+            )
+            .unwrap();
+        }
 
         // Text with multiline support (positioned at midpoint of slanted line)
         let max_width = lines
@@ -2538,13 +2603,26 @@ fn render_ref(
         let to_x = x; // Left edge of ref box
         let arrow_y = y + input_offset;
 
+        // Calculate arrowhead
+        let direction = arrow_direction(from_x, arrow_y, to_x, arrow_y);
+        let arrow_points = arrowhead_points(to_x, arrow_y, direction);
+        let line_end_x = to_x - ARROWHEAD_SIZE * direction.cos();
+
         // Draw arrow line
         writeln!(
             svg,
-            r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="message" marker-end="url(#arrow-filled)"/>"##,
+            r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="message"/>"##,
             x1 = from_x,
             y = arrow_y,
-            x2 = to_x
+            x2 = line_end_x
+        )
+        .unwrap();
+
+        // Draw arrowhead
+        writeln!(
+            svg,
+            r#"<polygon points="{points}" class="arrowhead"/>"#,
+            points = arrow_points
         )
         .unwrap();
 
@@ -2618,13 +2696,26 @@ fn render_ref(
         let to_x = state.get_x(to);
         let arrow_y = y + box_height - output_padding;
 
+        // Calculate arrowhead
+        let direction = arrow_direction(from_x, arrow_y, to_x, arrow_y);
+        let arrow_points = arrowhead_points(to_x, arrow_y, direction);
+        let line_end_x = to_x - ARROWHEAD_SIZE * direction.cos();
+
         // Draw dashed arrow line (response style)
         writeln!(
             svg,
-            r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="message-dashed" marker-end="url(#arrow-filled)"/>"##,
+            r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="message-dashed"/>"##,
             x1 = from_x,
             y = arrow_y,
-            x2 = to_x
+            x2 = line_end_x
+        )
+        .unwrap();
+
+        // Draw arrowhead
+        writeln!(
+            svg,
+            r#"<polygon points="{points}" class="arrowhead"/>"#,
+            points = arrow_points
         )
         .unwrap();
 

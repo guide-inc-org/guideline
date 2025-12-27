@@ -464,6 +464,40 @@ impl Theme {
         }
     }
 
+    /// Dark theme with vibrant green accents
+    pub fn dark_green() -> Self {
+        Self {
+            name: "dark-green".to_string(),
+            background: "#08090a".to_string(),
+            participant_fill: "#08090a".to_string(),
+            participant_stroke: "#22c55e".to_string(),
+            participant_text: "#22c55e".to_string(),
+            participant_shape: ParticipantShape::Rectangle,
+            lifeline_color: "#22c55e".to_string(),
+            lifeline_style: LifelineStyle::Dashed,
+            message_color: "#22c55e".to_string(),
+            message_text_color: "#22c55e".to_string(),
+            note_fill: "#08090a".to_string(),
+            note_stroke: "#22c55e".to_string(),
+            note_text_color: "#22c55e".to_string(),
+            activation_fill: "#08090a".to_string(),
+            activation_stroke: "#22c55e".to_string(),
+            block_stroke: "#22c55e".to_string(),
+            block_label_fill: "#08090a".to_string(),
+            block_fill: "transparent".to_string(),
+            font_family: "sans-serif".to_string(),
+            actor_fill: "#08090a".to_string(),
+            actor_stroke: "#22c55e".to_string(),
+            state_fill: "#08090a".to_string(),
+            state_stroke: "#22c55e".to_string(),
+            state_text_color: "#22c55e".to_string(),
+            ref_fill: "#08090a".to_string(),
+            ref_stroke: "#22c55e".to_string(),
+            ref_text_color: "#22c55e".to_string(),
+            description_text_color: "#22c55e".to_string(),
+        }
+    }
+
     /// Get theme by name
     pub fn by_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
@@ -478,6 +512,7 @@ impl Theme {
             "blue-outline" | "blueoutline" => Some(Self::blue_outline()),
             "warm" | "orange" => Some(Self::warm()),
             "gray" | "grey" => Some(Self::gray()),
+            "dark-green" | "darkgreen" => Some(Self::dark_green()),
             _ => None,
         }
     }
@@ -496,6 +531,7 @@ impl Theme {
             "blue-outline",
             "warm",
             "gray",
+            "dark-green",
         ]
     }
 }
