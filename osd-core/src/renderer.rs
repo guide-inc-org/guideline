@@ -275,7 +275,11 @@ fn parallel_needs_gap(items: &[Item]) -> bool {
 
 fn text_char_weight(c: char) -> f64 {
     if c.is_ascii() {
-        if c.is_uppercase() { 0.7 } else { 0.5 }
+        if c.is_uppercase() {
+            0.7
+        } else {
+            0.5
+        }
     } else {
         1.0 // CJK and other characters are wider
     }
@@ -346,7 +350,8 @@ fn calculate_participant_gaps(
 
                             // Distribute needed width across gaps between the participants
                             let gap_count = (max_idx - min_idx) as f64;
-                            let needed_gap = text_width / gap_count + config.participant_width * 0.3;
+                            let needed_gap =
+                                text_width / gap_count + config.participant_width * 0.3;
 
                             // Update gaps between the participants
                             for gap_idx in min_idx..max_idx {
@@ -357,7 +362,9 @@ fn calculate_participant_gaps(
                         }
                     }
                 }
-                Item::Block { items, else_items, .. } => {
+                Item::Block {
+                    items, else_items, ..
+                } => {
                     process_items(items, participant_index, gaps, config);
                     if let Some(else_items) = else_items {
                         process_items(else_items, participant_index, gaps, config);
@@ -392,7 +399,13 @@ fn calculate_participant_gaps(
 }
 
 impl RenderState {
-    fn new(config: Config, participants: Vec<Participant>, items: &[Item], has_title: bool, footer_style: FooterStyle) -> Self {
+    fn new(
+        config: Config,
+        participants: Vec<Participant>,
+        items: &[Item],
+        has_title: bool,
+        footer_style: FooterStyle,
+    ) -> Self {
         let mut config = config;
         let line_height = config.font_size + 2.0;
         let mut required_header_height = config.header_height;
@@ -433,7 +446,8 @@ impl RenderState {
         let right_margin = config.right_margin;
 
         let mut participant_x = HashMap::new();
-        let first_width = participants.first()
+        let first_width = participants
+            .first()
             .map(|p| *participant_widths.get(p.id()).unwrap_or(&min_width))
             .unwrap_or(min_width);
         let mut current_x = config.padding + left_margin + first_width / 2.0;
@@ -442,7 +456,8 @@ impl RenderState {
             participant_x.insert(p.id().to_string(), current_x);
             if i < gaps.len() {
                 let current_width = *participant_widths.get(p.id()).unwrap_or(&min_width);
-                let next_width = participants.get(i + 1)
+                let next_width = participants
+                    .get(i + 1)
                     .map(|np| *participant_widths.get(np.id()).unwrap_or(&min_width))
                     .unwrap_or(min_width);
                 // Gap is between the edges of adjacent participants
@@ -451,7 +466,8 @@ impl RenderState {
             }
         }
 
-        let last_width = participants.last()
+        let last_width = participants
+            .last()
             .map(|p| *participant_widths.get(p.id()).unwrap_or(&min_width))
             .unwrap_or(min_width);
         let total_width = current_x + last_width / 2.0 + right_margin + config.padding;
@@ -478,7 +494,10 @@ impl RenderState {
     }
 
     fn get_participant_width(&self, name: &str) -> f64 {
-        *self.participant_widths.get(name).unwrap_or(&self.config.participant_width)
+        *self
+            .participant_widths
+            .get(name)
+            .unwrap_or(&self.config.participant_width)
     }
 
     fn get_x(&self, name: &str) -> f64 {
@@ -592,7 +611,9 @@ impl RenderState {
 
     /// Get block left boundary (based on leftmost participant)
     fn block_left(&self) -> f64 {
-        let leftmost_width = self.participants.first()
+        let leftmost_width = self
+            .participants
+            .first()
             .map(|p| self.get_participant_width(p.id()))
             .unwrap_or(self.config.participant_width);
         self.leftmost_x() - leftmost_width / 2.0 - self.config.block_margin
@@ -600,7 +621,9 @@ impl RenderState {
 
     /// Get block right boundary (based on rightmost participant)
     fn block_right(&self) -> f64 {
-        let rightmost_width = self.participants.last()
+        let rightmost_width = self
+            .participants
+            .last()
             .map(|p| self.get_participant_width(p.id()))
             .unwrap_or(self.config.participant_width);
         self.rightmost_x() + rightmost_width / 2.0 + self.config.block_margin
@@ -627,11 +650,25 @@ impl RenderState {
 
     /// Add a block background to be rendered later
     fn add_block_background(&mut self, x: f64, y: f64, width: f64, height: f64) {
-        self.block_backgrounds.push(BlockBackground { x, y, width, height });
+        self.block_backgrounds.push(BlockBackground {
+            x,
+            y,
+            width,
+            height,
+        });
     }
 
     /// Add a block label to be rendered later (above activations/lifelines)
-    fn add_block_label(&mut self, x1: f64, start_y: f64, end_y: f64, x2: f64, kind: &str, label: &str, else_y: Option<f64>) {
+    fn add_block_label(
+        &mut self,
+        x1: f64,
+        start_y: f64,
+        end_y: f64,
+        x2: f64,
+        kind: &str,
+        label: &str,
+        else_y: Option<f64>,
+    ) {
         self.block_labels.push(BlockLabel {
             x1,
             start_y,
@@ -683,29 +720,82 @@ fn find_involved_participants(items: &[Item], state: &RenderState) -> Option<(f6
         for item in items {
             match item {
                 Item::Message { from, to, .. } => {
-                    update_bounds(from, state, min_left, max_right, includes_leftmost, leftmost_id);
-                    update_bounds(to, state, min_left, max_right, includes_leftmost, leftmost_id);
+                    update_bounds(
+                        from,
+                        state,
+                        min_left,
+                        max_right,
+                        includes_leftmost,
+                        leftmost_id,
+                    );
+                    update_bounds(
+                        to,
+                        state,
+                        min_left,
+                        max_right,
+                        includes_leftmost,
+                        leftmost_id,
+                    );
                 }
                 Item::Note { participants, .. } => {
                     for p in participants {
-                        update_bounds(p, state, min_left, max_right, includes_leftmost, leftmost_id);
+                        update_bounds(
+                            p,
+                            state,
+                            min_left,
+                            max_right,
+                            includes_leftmost,
+                            leftmost_id,
+                        );
                     }
                 }
-                Item::Block { items, else_items, .. } => {
-                    process_items(items, state, min_left, max_right, includes_leftmost, leftmost_id);
+                Item::Block {
+                    items, else_items, ..
+                } => {
+                    process_items(
+                        items,
+                        state,
+                        min_left,
+                        max_right,
+                        includes_leftmost,
+                        leftmost_id,
+                    );
                     if let Some(else_items) = else_items {
-                        process_items(else_items, state, min_left, max_right, includes_leftmost, leftmost_id);
+                        process_items(
+                            else_items,
+                            state,
+                            min_left,
+                            max_right,
+                            includes_leftmost,
+                            leftmost_id,
+                        );
                     }
                 }
-                Item::Activate { participant } | Item::Deactivate { participant } | Item::Destroy { participant } => {
-                    update_bounds(participant, state, min_left, max_right, includes_leftmost, leftmost_id);
+                Item::Activate { participant }
+                | Item::Deactivate { participant }
+                | Item::Destroy { participant } => {
+                    update_bounds(
+                        participant,
+                        state,
+                        min_left,
+                        max_right,
+                        includes_leftmost,
+                        leftmost_id,
+                    );
                 }
                 _ => {}
             }
         }
     }
 
-    process_items(items, state, &mut min_left, &mut max_right, &mut includes_leftmost, leftmost_id);
+    process_items(
+        items,
+        state,
+        &mut min_left,
+        &mut max_right,
+        &mut includes_leftmost,
+        leftmost_id,
+    );
 
     match (min_left, max_right) {
         (Some(min), Some(max)) => Some((min, max, includes_leftmost)),
@@ -730,15 +820,16 @@ fn calculate_block_bounds_with_label(
     // Convert Vec<&Item> to slice for find_involved_participants
     let items_slice: Vec<Item> = all_items.into_iter().cloned().collect();
 
-    let (base_x1, base_x2, includes_leftmost) = if let Some((min_left, max_right, includes_leftmost)) =
-        find_involved_participants(&items_slice, state)
-    {
-        let margin = state.config.block_margin;
-        (min_left - margin, max_right + margin, includes_leftmost)
-    } else {
-        // Fallback to full width if no participants found
-        (state.block_left(), state.block_right(), false)
-    };
+    let (base_x1, base_x2, includes_leftmost) =
+        if let Some((min_left, max_right, includes_leftmost)) =
+            find_involved_participants(&items_slice, state)
+        {
+            let margin = state.config.block_margin;
+            (min_left - margin, max_right + margin, includes_leftmost)
+        } else {
+            // Fallback to full width if no participants found
+            (state.block_left(), state.block_right(), false)
+        };
 
     // Calculate minimum width needed for label
     // Pentagon width + gap + condition label width + right margin
@@ -749,7 +840,8 @@ fn calculate_block_bounds_with_label(
         0.0
     } else {
         let condition_text = format!("[{}]", label);
-        let base_width = (estimate_text_width(&condition_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
+        let base_width =
+            (estimate_text_width(&condition_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
         base_width + label_padding_x * 2.0
     };
     let min_label_width = pentagon_width + 8.0 + condition_width + 20.0; // Extra right margin
@@ -789,7 +881,16 @@ fn collect_block_backgrounds(
 ) {
     for item in items {
         match item {
-            Item::Message { text, from, to, arrow, activate, deactivate, create, .. } => {
+            Item::Message {
+                text,
+                from,
+                to,
+                arrow,
+                activate,
+                deactivate,
+                create,
+                ..
+            } => {
                 state.apply_else_return_gap(arrow);
                 let chain_gap = if *activate && depth == 0 && *active_activation_count == 1 {
                     ACTIVATION_CHAIN_GAP
@@ -844,7 +945,8 @@ fn collect_block_backgrounds(
             Item::Note { text, .. } => {
                 let lines: Vec<&str> = text.split("\\n").collect();
                 let line_height = note_line_height(&state.config);
-                let note_height = note_padding(&state.config) * 2.0 + lines.len() as f64 * line_height;
+                let note_height =
+                    note_padding(&state.config) * 2.0 + lines.len() as f64 * line_height;
                 state.current_y += note_height.max(state.config.row_height) + NOTE_MARGIN;
             }
             Item::State { text, .. } => {
@@ -875,7 +977,12 @@ fn collect_block_backgrounds(
                     *active_activation_count -= 1;
                 }
             }
-            Item::Block { kind, label, items, else_items } => {
+            Item::Block {
+                kind,
+                label,
+                items,
+                else_items,
+            } => {
                 if block_is_parallel(kind) {
                     state.push_parallel();
                     let start_y = state.current_y;
@@ -884,7 +991,12 @@ fn collect_block_backgrounds(
                     for item in items {
                         state.current_y = start_y;
                         *active_activation_count = start_activation_count;
-                        collect_block_backgrounds(state, std::slice::from_ref(item), depth, active_activation_count);
+                        collect_block_backgrounds(
+                            state,
+                            std::slice::from_ref(item),
+                            depth,
+                            active_activation_count,
+                        );
                         if state.current_y > max_end_y {
                             max_end_y = state.current_y;
                         }
@@ -904,7 +1016,12 @@ fn collect_block_backgrounds(
                     state.push_serial_first_row_pending();
                     collect_block_backgrounds(state, items, depth, active_activation_count);
                     if let Some(else_items) = else_items {
-                        collect_block_backgrounds(state, else_items, depth, active_activation_count);
+                        collect_block_backgrounds(
+                            state,
+                            else_items,
+                            depth,
+                            active_activation_count,
+                        );
                     }
                     state.pop_serial_first_row_pending();
                     continue;
@@ -913,7 +1030,12 @@ fn collect_block_backgrounds(
                 if !block_has_frame(kind) {
                     collect_block_backgrounds(state, items, depth, active_activation_count);
                     if let Some(else_items) = else_items {
-                        collect_block_backgrounds(state, else_items, depth, active_activation_count);
+                        collect_block_backgrounds(
+                            state,
+                            else_items,
+                            depth,
+                            active_activation_count,
+                        );
                     }
                     continue;
                 }
@@ -923,7 +1045,14 @@ fn collect_block_backgrounds(
                 let frame_start_y = start_y - frame_shift;
 
                 // Calculate bounds based on involved participants and label width
-                let (x1, x2) = calculate_block_bounds_with_label(items, else_items.as_deref(), label, kind.as_str(), depth, state);
+                let (x1, x2) = calculate_block_bounds_with_label(
+                    items,
+                    else_items.as_deref(),
+                    label,
+                    kind.as_str(),
+                    depth,
+                    state,
+                );
 
                 state.current_y += block_header_space(&state.config, depth);
                 collect_block_backgrounds(state, items, depth + 1, active_activation_count);
@@ -937,18 +1066,32 @@ fn collect_block_backgrounds(
                 if let Some(else_items) = else_items {
                     state.push_else_return_pending();
                     state.current_y += block_else_spacing(&state.config, depth);
-                    collect_block_backgrounds(state, else_items, depth + 1, active_activation_count);
+                    collect_block_backgrounds(
+                        state,
+                        else_items,
+                        depth + 1,
+                        active_activation_count,
+                    );
                     state.pop_else_return_pending();
                 }
 
-                let end_y = state.current_y - state.config.row_height + block_footer_padding(&state.config, depth);
+                let end_y = state.current_y - state.config.row_height
+                    + block_footer_padding(&state.config, depth);
                 let frame_end_y = end_y - frame_shift;
                 state.current_y = end_y + state.config.row_height * 1.0;
 
                 // Collect this block's background
                 state.add_block_background(x1, frame_start_y, x2 - x1, frame_end_y - frame_start_y);
                 // Collect this block's label for rendering above activations/lifelines
-                state.add_block_label(x1, frame_start_y, frame_end_y, x2, kind.as_str(), label, else_y);
+                state.add_block_label(
+                    x1,
+                    frame_start_y,
+                    frame_end_y,
+                    x2,
+                    kind.as_str(),
+                    label,
+                    else_y,
+                );
             }
             _ => {}
         }
@@ -1038,7 +1181,9 @@ fn render_block_labels(svg: &mut String, state: &RenderState) {
             let condition_text = format!("[{}]", bl.label);
             let text_x = x1 + label_width + 8.0;
             let text_y = start_y + label_text_offset;
-            let base_width = (estimate_text_width(&condition_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
+            let base_width = (estimate_text_width(&condition_text, label_font_size)
+                - TEXT_WIDTH_PADDING)
+                .max(0.0);
             let bg_width = base_width + label_padding_x * 2.0;
 
             writeln!(
@@ -1077,7 +1222,8 @@ fn render_block_labels(svg: &mut String, state: &RenderState) {
 
             let else_text = "[else]";
             let else_text_x = x1 + 4.0;
-            let else_base_width = (estimate_text_width(else_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
+            let else_base_width =
+                (estimate_text_width(else_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
             let else_bg_width = else_base_width + label_padding_x * 2.0;
             let else_rect_y = else_y - label_height;
             let else_text_y = else_rect_y + label_text_offset;
@@ -1116,12 +1262,22 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
     let participants = diagram.participants();
     let has_title = diagram.title.is_some();
     let footer_style = diagram.options.footer;
-    let mut state = RenderState::new(config, participants, &diagram.items, has_title, footer_style);
+    let mut state = RenderState::new(
+        config,
+        participants,
+        &diagram.items,
+        has_title,
+        footer_style,
+    );
     let mut svg = String::new();
 
     // Pre-calculate height
     let content_height = calculate_height(&diagram.items, &state.config, 0);
-    let title_space = if has_title { state.config.title_height } else { 0.0 };
+    let title_space = if has_title {
+        state.config.title_height
+    } else {
+        0.0
+    };
     let footer_space = match footer_style {
         FooterStyle::Box => state.config.header_height,
         FooterStyle::Bar | FooterStyle::None => 0.0,
@@ -1363,8 +1519,14 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
         }
         FooterStyle::Bar => {
             // Draw simple horizontal line across all participants
-            let left = state.leftmost_x() - state.get_participant_width(state.participants.first().map(|p| p.id()).unwrap_or("")) / 2.0;
-            let right = state.rightmost_x() + state.get_participant_width(state.participants.last().map(|p| p.id()).unwrap_or("")) / 2.0;
+            let left = state.leftmost_x()
+                - state.get_participant_width(
+                    state.participants.first().map(|p| p.id()).unwrap_or(""),
+                ) / 2.0;
+            let right = state.rightmost_x()
+                + state
+                    .get_participant_width(state.participants.last().map(|p| p.id()).unwrap_or(""))
+                    / 2.0;
             writeln!(
                 &mut svg,
                 r##"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" stroke="{c}" stroke-width="1"/>"##,
@@ -1398,7 +1560,16 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
         let line_height = config.font_size + 4.0;
         for item in items {
             match item {
-                Item::Message { from, to, text, arrow, create, activate, deactivate, .. } => {
+                Item::Message {
+                    from,
+                    to,
+                    text,
+                    arrow,
+                    create,
+                    activate,
+                    deactivate,
+                    ..
+                } => {
                     if let Some(pending) = else_pending.last_mut() {
                         if *pending && matches!(arrow.line, LineStyle::Dashed) {
                             height += ELSE_RETURN_GAP;
@@ -1424,7 +1595,9 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                         height += spacing;
                     } else {
                         let spacing_line_height = message_spacing_line_height(config);
-                        height += config.row_height + (lines.saturating_sub(1)) as f64 * spacing_line_height + delay_offset;
+                        height += config.row_height
+                            + (lines.saturating_sub(1)) as f64 * spacing_line_height
+                            + delay_offset;
                     }
                     if *create {
                         height += CREATE_MESSAGE_SPACING;
@@ -1448,24 +1621,32 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                 }
                 Item::Note { text, .. } => {
                     let lines = text.split("\\n").count();
-                    let note_height = note_padding(config) * 2.0 + lines as f64 * note_line_height(config);
+                    let note_height =
+                        note_padding(config) * 2.0 + lines as f64 * note_line_height(config);
                     height += note_height.max(config.row_height) + NOTE_MARGIN;
                 }
                 Item::State { text, .. } => {
                     let lines = text.split("\\n").count();
-                    let box_height = config.note_padding * 2.0 + lines as f64 * state_line_height(config);
+                    let box_height =
+                        config.note_padding * 2.0 + lines as f64 * state_line_height(config);
                     height += box_height + item_pre_gap(config) + STATE_EXTRA_GAP;
                 }
                 Item::Ref { text, .. } => {
                     let lines = text.split("\\n").count();
-                    let box_height = config.note_padding * 2.0 + lines as f64 * ref_line_height(config);
+                    let box_height =
+                        config.note_padding * 2.0 + lines as f64 * ref_line_height(config);
                     height += box_height + item_pre_gap(config) + REF_EXTRA_GAP;
                 }
                 Item::Description { text } => {
                     let lines = text.split("\\n").count();
                     height += lines as f64 * line_height + 10.0;
                 }
-                Item::Block { kind, items, else_items, .. } => {
+                Item::Block {
+                    kind,
+                    items,
+                    else_items,
+                    ..
+                } => {
                     if block_is_parallel(kind) {
                         let mut max_branch_height = 0.0;
                         let base_activation_count = *active_activation_count;
@@ -1500,26 +1681,75 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
 
                     if matches!(kind, BlockKind::Serial) {
                         serial_pending.push(true);
-                        height += inner(items, config, depth, else_pending, serial_pending, active_activation_count, parallel_depth);
+                        height += inner(
+                            items,
+                            config,
+                            depth,
+                            else_pending,
+                            serial_pending,
+                            active_activation_count,
+                            parallel_depth,
+                        );
                         if let Some(else_items) = else_items {
-                            height += inner(else_items, config, depth, else_pending, serial_pending, active_activation_count, parallel_depth);
+                            height += inner(
+                                else_items,
+                                config,
+                                depth,
+                                else_pending,
+                                serial_pending,
+                                active_activation_count,
+                                parallel_depth,
+                            );
                         }
                         serial_pending.pop();
                     } else if !block_has_frame(kind) {
-                        height += inner(items, config, depth, else_pending, serial_pending, active_activation_count, parallel_depth);
+                        height += inner(
+                            items,
+                            config,
+                            depth,
+                            else_pending,
+                            serial_pending,
+                            active_activation_count,
+                            parallel_depth,
+                        );
                         if let Some(else_items) = else_items {
-                            height += inner(else_items, config, depth, else_pending, serial_pending, active_activation_count, parallel_depth);
+                            height += inner(
+                                else_items,
+                                config,
+                                depth,
+                                else_pending,
+                                serial_pending,
+                                active_activation_count,
+                                parallel_depth,
+                            );
                         }
                     } else {
                         height += block_header_space(config, depth);
-                        height += inner(items, config, depth + 1, else_pending, serial_pending, active_activation_count, parallel_depth);
+                        height += inner(
+                            items,
+                            config,
+                            depth + 1,
+                            else_pending,
+                            serial_pending,
+                            active_activation_count,
+                            parallel_depth,
+                        );
                         if let Some(else_items) = else_items {
                             else_pending.push(true);
                             height += block_else_spacing(config, depth);
-                            height += inner(else_items, config, depth + 1, else_pending, serial_pending, active_activation_count, parallel_depth);
+                            height += inner(
+                                else_items,
+                                config,
+                                depth + 1,
+                                else_pending,
+                                serial_pending,
+                                active_activation_count,
+                                parallel_depth,
+                            );
                             else_pending.pop();
                         }
-                        height += block_footer_padding(config, depth) + config.row_height * 1.0 - config.row_height;
+                        height += block_footer_padding(config, depth) + config.row_height * 1.0
+                            - config.row_height;
                     }
                 }
                 Item::Activate { .. } => {
@@ -1619,7 +1849,8 @@ fn render_participant_headers(svg: &mut String, state: &RenderState, y: f64) {
                 } else {
                     let line_height = state.config.font_size + 2.0;
                     let total_height = lines.len() as f64 * line_height;
-                    let start_y = y + state.config.header_height / 2.0 - total_height / 2.0 + line_height * 0.8;
+                    let start_y = y + state.config.header_height / 2.0 - total_height / 2.0
+                        + line_height * 0.8;
                     write!(svg, r#"<text x="{x}" class="participant-text">"#, x = x).unwrap();
                     for (i, line) in lines.iter().enumerate() {
                         let dy = if i == 0 { start_y } else { line_height };
@@ -1721,12 +1952,7 @@ fn render_participant_headers(svg: &mut String, state: &RenderState, y: f64) {
                 } else {
                     // Multiline actor name using tspan
                     let line_height = state.config.font_size + 2.0;
-                    writeln!(
-                        svg,
-                        r#"<text x="{x}" class="participant-text">"#,
-                        x = x
-                    )
-                    .unwrap();
+                    writeln!(svg, r#"<text x="{x}" class="participant-text">"#, x = x).unwrap();
                     for (i, line) in name_lines.iter().enumerate() {
                         if i == 0 {
                             writeln!(
@@ -1855,8 +2081,24 @@ fn render_items(svg: &mut String, state: &mut RenderState, items: &[Item], depth
             Item::State { participants, text } => {
                 render_state(svg, state, participants, text);
             }
-            Item::Ref { participants, text, input_from, input_label, output_to, output_label } => {
-                render_ref(svg, state, participants, text, input_from.as_deref(), input_label.as_deref(), output_to.as_deref(), output_label.as_deref());
+            Item::Ref {
+                participants,
+                text,
+                input_from,
+                input_label,
+                output_to,
+                output_label,
+            } => {
+                render_ref(
+                    svg,
+                    state,
+                    participants,
+                    text,
+                    input_from.as_deref(),
+                    input_label.as_deref(),
+                    output_to.as_deref(),
+                    output_label.as_deref(),
+                );
             }
             Item::DiagramOption { .. } => {
                 // Options are processed at render start, not during item rendering
@@ -1960,13 +2202,7 @@ fn render_message(
         let label_x_max = text_x + max_width;
         let label_offset = if has_label_text {
             let step = line_height * MESSAGE_LABEL_COLLISION_STEP_RATIO;
-            state.reserve_message_label(
-                label_x_min,
-                label_x_max,
-                label_y_min,
-                label_y_max,
-                step,
-            )
+            state.reserve_message_label(label_x_min, label_x_max, label_y_min, label_y_max, step)
         } else {
             0.0
         };
@@ -2027,13 +2263,7 @@ fn render_message(
             let label_x_min = text_x - max_width / 2.0;
             let label_x_max = text_x + max_width / 2.0;
             let step = line_height * MESSAGE_LABEL_COLLISION_STEP_RATIO;
-            state.reserve_message_label(
-                label_x_min,
-                label_x_max,
-                label_y_min,
-                label_y_max,
-                step,
-            )
+            state.reserve_message_label(label_x_min, label_x_max, label_y_min, label_y_max, step)
         } else {
             0.0
         };
@@ -2159,12 +2389,7 @@ fn render_note(
         y3 = y + note_height
     );
 
-    writeln!(
-        svg,
-        r#"<path d="{path}" class="note"/>"#,
-        path = note_path
-    )
-    .unwrap();
+    writeln!(svg, r#"<path d="{path}" class="note"/>"#, path = note_path).unwrap();
 
     // Draw the fold triangle (represents the folded corner)
     let theme = &state.config.theme;
@@ -2181,7 +2406,7 @@ fn render_note(
         svg,
         r##"<path d="{path}" fill="{fill}" stroke="{stroke}" stroke-width="1"/>"##,
         path = fold_path,
-        fill = "#e0e0a0",  // Slightly darker yellow for fold
+        fill = "#e0e0a0", // Slightly darker yellow for fold
         stroke = theme.note_stroke
     )
     .unwrap();
@@ -2200,7 +2425,11 @@ fn render_note(
             r#"<text x="{x}" y="{y}" class="note-text" text-anchor="{anchor}">{t}</text>"#,
             x = text_x,
             y = text_y,
-            anchor = if *position == NotePosition::Over { "middle" } else { "start" },
+            anchor = if *position == NotePosition::Over {
+                "middle"
+            } else {
+                "start"
+            },
             t = escape_xml(line)
         )
         .unwrap();
@@ -2211,12 +2440,7 @@ fn render_note(
 }
 
 /// Render a state box (rounded rectangle)
-fn render_state(
-    svg: &mut String,
-    state: &mut RenderState,
-    participants: &[String],
-    text: &str,
-) {
+fn render_state(svg: &mut String, state: &mut RenderState, participants: &[String], text: &str) {
     let theme = &state.config.theme;
     let lines: Vec<&str> = text.split("\\n").collect();
     let line_height = state_line_height(&state.config);
@@ -2293,7 +2517,8 @@ fn render_ref(
     let (x, box_width) = if participants.len() == 1 {
         let px = state.get_x(&participants[0]);
         let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(15);
-        let w = (max_line_len as f64 * 8.0 + state.config.note_padding * 2.0 + notch_size * 2.0).max(100.0);
+        let w = (max_line_len as f64 * 8.0 + state.config.note_padding * 2.0 + notch_size * 2.0)
+            .max(100.0);
         (px - w / 2.0, w)
     } else {
         let x1 = state.get_x(&participants[0]);
@@ -2422,11 +2647,7 @@ fn render_ref(
 }
 
 /// Render a description (extended text explanation)
-fn render_description(
-    svg: &mut String,
-    state: &mut RenderState,
-    text: &str,
-) {
+fn render_description(svg: &mut String, state: &mut RenderState, text: &str) {
     let theme = &state.config.theme;
     let lines: Vec<&str> = text.split("\\n").collect();
     let line_height = state.config.font_size + 4.0;
@@ -2518,7 +2739,8 @@ fn render_block(
         state.pop_else_return_pending();
     }
 
-    let end_y = state.current_y - state.config.row_height + block_footer_padding(&state.config, depth);
+    let end_y =
+        state.current_y - state.config.row_height + block_footer_padding(&state.config, depth);
 
     // Set current_y to end of block + margin
     state.current_y = end_y + state.config.row_height * 1.0;

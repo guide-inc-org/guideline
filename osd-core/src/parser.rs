@@ -1,13 +1,13 @@
 //! Parser for WebSequenceDiagrams-compatible sequence diagram syntax
 
 use nom::{
-    IResult, Parser,
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_until, take_while, take_while1},
     character::complete::{char, digit1, space0, space1},
     combinator::{map, opt, value},
     multi::separated_list1,
     sequence::{delimited, pair, preceded},
+    IResult, Parser,
 };
 
 use crate::ast::*;
@@ -155,7 +155,10 @@ pub fn parse(input: &str) -> Result<Diagram, ParseError> {
                                 nested_depth += 1;
                             }
 
-                            if nested_depth > 0 && !nested_line.is_empty() && !nested_line.starts_with('#') {
+                            if nested_depth > 0
+                                && !nested_line.is_empty()
+                                && !nested_line.starts_with('#')
+                            {
                                 if let Ok((_, item)) = parse_line(nested_line) {
                                     nested_items.push(item);
                                 }
@@ -219,7 +222,11 @@ pub fn parse(input: &str) -> Result<Diagram, ParseError> {
         }
     }
 
-    Ok(Diagram { title, items, options })
+    Ok(Diagram {
+        title,
+        items,
+        options,
+    })
 }
 
 /// Check if line starts a multiline note (note without colon)
@@ -401,7 +408,8 @@ fn parse_line(input: &str) -> IResult<&str, Item> {
         parse_autonumber,
         parse_block_keyword,
         parse_message,
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 /// Parse title
@@ -417,7 +425,8 @@ fn parse_participant_decl(input: &str) -> IResult<&str, Item> {
     let (input, kind) = alt((
         value(ParticipantKind::Participant, tag_no_case("participant")),
         value(ParticipantKind::Actor, tag_no_case("actor")),
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     let (input, _) = space1.parse(input)?;
 
@@ -428,7 +437,8 @@ fn parse_participant_decl(input: &str) -> IResult<&str, Item> {
     let (input, alias) = opt(preceded(
         (space1, tag_no_case("as"), space1),
         parse_identifier,
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     Ok((
         input,
@@ -447,7 +457,8 @@ fn parse_name(input: &str) -> IResult<&str, &str> {
         delimited(char('"'), take_until("\""), char('"')),
         // Unquoted identifier
         parse_identifier,
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 /// Parse an identifier (alphanumeric + underscore)
@@ -495,17 +506,15 @@ fn parse_arrow(input: &str) -> IResult<&str, Arrow> {
         // ->> solid open
         value(Arrow::SYNC_OPEN, tag("->>")),
         // ->(n) delayed
-        map(
-            delimited(tag("->("), digit1, char(')')),
-            |n: &str| Arrow {
-                line: LineStyle::Solid,
-                head: ArrowHead::Filled,
-                delay: n.parse().ok(),
-            },
-        ),
+        map(delimited(tag("->("), digit1, char(')')), |n: &str| Arrow {
+            line: LineStyle::Solid,
+            head: ArrowHead::Filled,
+            delay: n.parse().ok(),
+        }),
         // -> solid filled
         value(Arrow::SYNC, tag("->")),
-    )).parse(input)
+    ))
+    .parse(input)
 }
 
 /// Parse arrow modifiers: `+` (activate), `-` (deactivate), `*` (create)
@@ -526,7 +535,8 @@ fn parse_note(input: &str) -> IResult<&str, Item> {
         value(NotePosition::Left, pair(tag_no_case("left"), space1)),
         value(NotePosition::Right, pair(tag_no_case("right"), space1)),
         value(NotePosition::Over, tag_no_case("")),
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     let (input, position) = if position == NotePosition::Over {
         let (input, _) = tag_no_case("over").parse(input)?;
@@ -539,10 +549,8 @@ fn parse_note(input: &str) -> IResult<&str, Item> {
     let (input, _) = space1.parse(input)?;
 
     // Parse participants (comma-separated) - support quoted names
-    let (input, participants) = separated_list1(
-        (space0, char(','), space0),
-        parse_name,
-    ).parse(input)?;
+    let (input, participants) =
+        separated_list1((space0, char(','), space0), parse_name).parse(input)?;
 
     let (input, _) = opt(char(':')).parse(input)?;
     let (input, _) = space0.parse(input)?;
@@ -566,10 +574,8 @@ fn parse_state(input: &str) -> IResult<&str, Item> {
     let (input, _) = space1.parse(input)?;
 
     // Parse participants (comma-separated)
-    let (input, participants) = separated_list1(
-        (space0, char(','), space0),
-        parse_name,
-    ).parse(input)?;
+    let (input, participants) =
+        separated_list1((space0, char(','), space0), parse_name).parse(input)?;
 
     let (input, _) = opt(char(':')).parse(input)?;
     let (input, _) = space0.parse(input)?;
@@ -592,10 +598,8 @@ fn parse_ref_single_line(input: &str) -> IResult<&str, Item> {
     let (input, _) = space1.parse(input)?;
 
     // Parse participants (comma-separated)
-    let (input, participants) = separated_list1(
-        (space0, char(','), space0),
-        parse_name,
-    ).parse(input)?;
+    let (input, participants) =
+        separated_list1((space0, char(','), space0), parse_name).parse(input)?;
 
     let (input, _) = char(':').parse(input)?;
     let (input, _) = space0.parse(input)?;
@@ -674,7 +678,8 @@ fn parse_destroy(input: &str) -> IResult<&str, Item> {
 fn parse_autonumber(input: &str) -> IResult<&str, Item> {
     let (input, _) = tag_no_case("autonumber").parse(input)?;
 
-    let (_input, rest) = opt(preceded(space1, take_while1(|c: char| !c.is_whitespace()))).parse(input)?;
+    let (_input, rest) =
+        opt(preceded(space1, take_while1(|c: char| !c.is_whitespace()))).parse(input)?;
 
     let (enabled, start) = match rest {
         Some("off") => (false, None),
@@ -687,11 +692,7 @@ fn parse_autonumber(input: &str) -> IResult<&str, Item> {
 
 /// Parse block keywords: alt, opt, loop, par, else, end
 fn parse_block_keyword(input: &str) -> IResult<&str, Item> {
-    alt((
-        parse_block_start,
-        parse_else,
-        parse_end,
-    )).parse(input)
+    alt((parse_block_start, parse_else, parse_end)).parse(input)
 }
 
 /// Parse block start: `alt condition`, `opt condition`, `loop condition`, `par`, `seq`
@@ -702,7 +703,8 @@ fn parse_block_start(input: &str) -> IResult<&str, Item> {
         value(BlockKind::Loop, tag_no_case("loop")),
         value(BlockKind::Par, tag_no_case("par")),
         value(BlockKind::Seq, tag_no_case("seq")),
-    )).parse(input)?;
+    ))
+    .parse(input)?;
 
     let (input, _) = space0.parse(input)?;
     let label = input.trim().to_string();
@@ -742,7 +744,10 @@ fn parse_end(input: &str) -> IResult<&str, Item> {
     let trimmed = input.trim().to_lowercase();
     // Don't match "end note" or "end ref" - those are handled separately
     if trimmed.starts_with("end note") || trimmed.starts_with("end ref") {
-        return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+        return Err(nom::Err::Error(nom::error::Error::new(
+            input,
+            nom::error::ErrorKind::Tag,
+        )));
     }
     let (_input, _) = tag_no_case("end").parse(input)?;
     Ok((
@@ -791,7 +796,12 @@ fn build_blocks(items: Vec<Item>) -> Result<Vec<Item>, ParseError> {
                     parent.3 = Some(Vec::new());
                 }
             }
-            Item::Block { kind, label, items, else_items } if !label.starts_with("__") => {
+            Item::Block {
+                kind,
+                label,
+                items,
+                else_items,
+            } if !label.starts_with("__") => {
                 // Check if this is a completed block (parallel/serial with items already)
                 if matches!(kind, BlockKind::Parallel | BlockKind::Serial) || !items.is_empty() {
                     // Already a complete block, add directly
@@ -863,7 +873,11 @@ mod tests {
         let result = parse("note over Alice: Hello").unwrap();
         assert_eq!(result.items.len(), 1);
         match &result.items[0] {
-            Item::Note { position, participants, text } => {
+            Item::Note {
+                position,
+                participants,
+                text,
+            } => {
                 assert_eq!(*position, NotePosition::Over);
                 assert_eq!(participants, &["Alice"]);
                 assert_eq!(text, "Hello");
@@ -877,7 +891,9 @@ mod tests {
         let result = parse("opt condition\nAlice->Bob: Hello\nend").unwrap();
         assert_eq!(result.items.len(), 1);
         match &result.items[0] {
-            Item::Block { kind, label, items, .. } => {
+            Item::Block {
+                kind, label, items, ..
+            } => {
                 assert_eq!(*kind, BlockKind::Opt);
                 assert_eq!(label, "condition");
                 assert_eq!(items.len(), 1);
@@ -888,10 +904,17 @@ mod tests {
 
     #[test]
     fn test_alt_else_block() {
-        let result = parse("alt success\nAlice->Bob: OK\nelse failure\nAlice->Bob: Error\nend").unwrap();
+        let result =
+            parse("alt success\nAlice->Bob: OK\nelse failure\nAlice->Bob: Error\nend").unwrap();
         assert_eq!(result.items.len(), 1);
         match &result.items[0] {
-            Item::Block { kind, label, items, else_items, .. } => {
+            Item::Block {
+                kind,
+                label,
+                items,
+                else_items,
+                ..
+            } => {
                 assert_eq!(*kind, BlockKind::Alt);
                 assert_eq!(label, "success");
                 assert_eq!(items.len(), 1);
@@ -927,7 +950,11 @@ end note"#;
         let result = parse(input).unwrap();
         assert_eq!(result.items.len(), 1);
         match &result.items[0] {
-            Item::Note { position, participants, text } => {
+            Item::Note {
+                position,
+                participants,
+                text,
+            } => {
                 assert_eq!(*position, NotePosition::Left);
                 assert_eq!(participants, &["Alice"]);
                 assert_eq!(text, "Line 1\\nLine 2");
@@ -956,7 +983,9 @@ end note"#;
         let result = parse("ref over Alice, Bob: See other diagram").unwrap();
         assert_eq!(result.items.len(), 1);
         match &result.items[0] {
-            Item::Ref { participants, text, .. } => {
+            Item::Ref {
+                participants, text, ..
+            } => {
                 assert_eq!(participants, &["Alice", "Bob"]);
                 assert_eq!(text, "See other diagram");
             }

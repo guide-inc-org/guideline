@@ -53,10 +53,18 @@ impl Diagram {
                         add_participant(name, alias.as_deref(), *kind, participants, seen);
                     }
                     Item::Message { from, to, .. } => {
-                        add_participant(from, None, ParticipantKind::Participant, participants, seen);
+                        add_participant(
+                            from,
+                            None,
+                            ParticipantKind::Participant,
+                            participants,
+                            seen,
+                        );
                         add_participant(to, None, ParticipantKind::Participant, participants, seen);
                     }
-                    Item::Block { items, else_items, .. } => {
+                    Item::Block {
+                        items, else_items, ..
+                    } => {
                         collect_from_items(items, participants, seen);
                         if let Some(else_items) = else_items {
                             collect_from_items(else_items, participants, seen);
@@ -128,17 +136,11 @@ pub enum Item {
         text: String,
     },
     /// Activate a participant
-    Activate {
-        participant: String,
-    },
+    Activate { participant: String },
     /// Deactivate a participant
-    Deactivate {
-        participant: String,
-    },
+    Deactivate { participant: String },
     /// Destroy a participant
-    Destroy {
-        participant: String,
-    },
+    Destroy { participant: String },
     /// Block (alt, opt, loop, par)
     Block {
         kind: BlockKind,
@@ -147,10 +149,7 @@ pub enum Item {
         else_items: Option<Vec<Item>>,
     },
     /// Autonumber control
-    Autonumber {
-        enabled: bool,
-        start: Option<u32>,
-    },
+    Autonumber { enabled: bool, start: Option<u32> },
     /// State box (rounded rectangle)
     State {
         participants: Vec<String>,
@@ -170,14 +169,9 @@ pub enum Item {
         output_label: Option<String>,
     },
     /// Diagram option
-    DiagramOption {
-        key: String,
-        value: String,
-    },
+    DiagramOption { key: String, value: String },
     /// Extended text description (indented comment)
-    Description {
-        text: String,
-    },
+    Description { text: String },
 }
 
 /// Arrow style
@@ -249,12 +243,12 @@ pub enum NotePosition {
 /// Footer style for diagram (controlled by option footer=xxx)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FooterStyle {
-    /// No footer at all
+    /// No footer at all (default)
+    #[default]
     None,
     /// Simple horizontal line
     Bar,
-    /// Participant boxes at bottom (default)
-    #[default]
+    /// Participant boxes at bottom
     Box,
 }
 
