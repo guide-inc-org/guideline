@@ -85,6 +85,14 @@ struct BlockLabel {
     else_y: Option<f64>,
 }
 
+#[derive(Debug, Clone)]
+struct LabelBox {
+    x_min: f64,
+    x_max: f64,
+    y_min: f64,
+    y_max: f64,
+}
+
 /// Render state
 struct RenderState {
     config: Config,
@@ -109,6 +117,8 @@ struct RenderState {
     serial_first_row_pending: Vec<bool>,
     /// Tracks nested parallel depth for serial row spacing
     parallel_depth: usize,
+    /// Tracks message label bounding boxes to avoid overlap
+    message_label_boxes: Vec<LabelBox>,
 }
 
 const TEXT_WIDTH_PADDING: f64 = 41.0;
@@ -145,6 +155,10 @@ const ACTIVATION_CHAIN_GAP: f64 = 1.0;
 const REF_EXTRA_GAP: f64 = 2.5;
 const SELF_MESSAGE_ACTIVE_ADJUST: f64 = 1.0;
 const STATE_EXTRA_GAP: f64 = 0.0;
+const MESSAGE_LABEL_COLLISION_PADDING: f64 = 2.0;
+const MESSAGE_LABEL_COLLISION_STEP_RATIO: f64 = 0.9;
+const MESSAGE_LABEL_ASCENT_FACTOR: f64 = 0.8;
+const MESSAGE_LABEL_DESCENT_FACTOR: f64 = 0.2;
 
 fn block_header_space(config: &Config, depth: usize) -> f64 {
     let base = config.row_height + BLOCK_LABEL_HEIGHT;
@@ -216,6 +230,34 @@ fn item_pre_gap(config: &Config) -> f64 {
 
 fn item_pre_shift(config: &Config) -> f64 {
     (config.row_height - item_pre_gap(config)).max(0.0)
+}
+
+fn label_boxes_overlap(x_min: f64, x_max: f64, y_min: f64, y_max: f64, other: &LabelBox) -> bool {
+    let x_overlap = x_max >= other.x_min - MESSAGE_LABEL_COLLISION_PADDING
+        && x_min <= other.x_max + MESSAGE_LABEL_COLLISION_PADDING;
+    let y_overlap = y_max >= other.y_min - MESSAGE_LABEL_COLLISION_PADDING
+        && y_min <= other.y_max + MESSAGE_LABEL_COLLISION_PADDING;
+    x_overlap && y_overlap
+}
+
+fn actor_footer_extra(participants: &[Participant], config: &Config) -> f64 {
+    let mut extra = 0.0;
+    for p in participants {
+        if p.kind != ParticipantKind::Actor {
+            continue;
+        }
+        let lines = p.name.split("\\n").count();
+        let line_height = if lines > 1 {
+            16.0
+        } else {
+            config.font_size + 2.0
+        };
+        let needed = 15.0 + (lines.saturating_sub(1) as f64 * line_height) + config.font_size;
+        if needed > extra {
+            extra = needed;
+        }
+    }
+    extra
 }
 
 fn serial_first_row_gap(parallel_depth: usize) -> f64 {
@@ -438,6 +480,7 @@ impl RenderState {
             else_return_pending: Vec::new(),
             serial_first_row_pending: Vec::new(),
             parallel_depth: 0,
+            message_label_boxes: Vec::new(),
         }
     }
 
@@ -485,6 +528,36 @@ impl RenderState {
                 *pending = false;
             }
         }
+    }
+
+    fn reserve_message_label(
+        &mut self,
+        x_min: f64,
+        x_max: f64,
+        mut y_min: f64,
+        mut y_max: f64,
+        step: f64,
+    ) -> f64 {
+        let mut offset = 0.0;
+        let mut attempts = 0;
+        while self
+            .message_label_boxes
+            .iter()
+            .any(|b| label_boxes_overlap(x_min, x_max, y_min, y_max, b))
+            && attempts < 20
+        {
+            y_min += step;
+            y_max += step;
+            offset += step;
+            attempts += 1;
+        }
+        self.message_label_boxes.push(LabelBox {
+            x_min,
+            x_max,
+            y_min,
+            y_max,
+        });
+        offset
     }
 
     fn push_parallel(&mut self) {
@@ -1060,11 +1133,16 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
         FooterStyle::Box => state.config.header_height,
         FooterStyle::Bar | FooterStyle::None => 0.0,
     };
-    let total_height = state.config.padding * 2.0
+    let footer_label_extra = match footer_style {
+        FooterStyle::Box => actor_footer_extra(&state.participants, &state.config),
+        FooterStyle::Bar | FooterStyle::None => 0.0,
+    };
+    let base_total_height = state.config.padding * 2.0
         + title_space
         + state.config.header_height
         + footer_space
         + content_height;
+    let total_height = base_total_height + footer_label_extra;
     let total_width = state.diagram_width();
 
     // SVG header
@@ -1239,7 +1317,7 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
     // Calculate footer position
     let header_y = state.header_top();
     let footer_y = match footer_style {
-        FooterStyle::Box => total_height - state.config.padding - state.config.header_height,
+        FooterStyle::Box => base_total_height - state.config.padding - state.config.header_height,
         FooterStyle::Bar | FooterStyle::None => total_height - state.config.padding,
     };
 
@@ -1847,6 +1925,7 @@ fn render_message(
     }
 
     let y = state.current_y;
+    let has_label_text = lines.iter().any(|line| !line.trim().is_empty());
 
     if is_self {
         // Self message - loop back
@@ -1866,12 +1945,35 @@ fn render_message(
         .unwrap();
 
         // Text - multiline support
+        let text_x = x1 + loop_width + 5.0;
+        let max_width = lines
+            .iter()
+            .map(|line| estimate_message_width(line, state.config.font_size))
+            .fold(0.0, f64::max);
+        let top_line_y = y + 4.0 + 0.5 * line_height;
+        let bottom_line_y = y + 4.0 + (lines.len() as f64 - 0.5) * line_height;
+        let label_y_min = top_line_y - line_height * MESSAGE_LABEL_ASCENT_FACTOR;
+        let label_y_max = bottom_line_y + line_height * MESSAGE_LABEL_DESCENT_FACTOR;
+        let label_x_min = text_x;
+        let label_x_max = text_x + max_width;
+        let label_offset = if has_label_text {
+            let step = line_height * MESSAGE_LABEL_COLLISION_STEP_RATIO;
+            state.reserve_message_label(
+                label_x_min,
+                label_x_max,
+                label_y_min,
+                label_y_max,
+                step,
+            )
+        } else {
+            0.0
+        };
         for (i, line) in lines.iter().enumerate() {
-            let line_y = y + 4.0 + (i as f64 + 0.5) * line_height;
+            let line_y = y + 4.0 + (i as f64 + 0.5) * line_height + label_offset;
             writeln!(
                 svg,
                 r#"<text x="{x}" y="{y}" class="message-text">{t}</text>"#,
-                x = x1 + loop_width + 5.0,
+                x = text_x,
                 y = line_y,
                 t = escape_xml(line)
             )
@@ -1908,8 +2010,30 @@ fn render_message(
         .unwrap();
 
         // Text with multiline support (positioned at midpoint of slanted line)
+        let max_width = lines
+            .iter()
+            .map(|line| estimate_message_width(line, state.config.font_size))
+            .fold(0.0, f64::max);
+        let top_line_y = text_y - (lines.len() as f64 - 1.0) * line_height;
+        let bottom_line_y = text_y;
+        let label_offset = if has_label_text {
+            let label_y_min = top_line_y - line_height * MESSAGE_LABEL_ASCENT_FACTOR;
+            let label_y_max = bottom_line_y + line_height * MESSAGE_LABEL_DESCENT_FACTOR;
+            let label_x_min = text_x - max_width / 2.0;
+            let label_x_max = text_x + max_width / 2.0;
+            let step = line_height * MESSAGE_LABEL_COLLISION_STEP_RATIO;
+            state.reserve_message_label(
+                label_x_min,
+                label_x_max,
+                label_y_min,
+                label_y_max,
+                step,
+            )
+        } else {
+            0.0
+        };
         for (i, line) in lines.iter().enumerate() {
-            let line_y = text_y - (lines.len() - 1 - i) as f64 * line_height;
+            let line_y = text_y - (lines.len() - 1 - i) as f64 * line_height + label_offset;
             writeln!(
                 svg,
                 r#"<text x="{x}" y="{y}" class="message-text" text-anchor="middle">{t}</text>"#,
