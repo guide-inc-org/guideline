@@ -49,7 +49,7 @@ impl Default for Config {
             right_margin: 68.0,      // Symmetric
             participant_gap: 122.0,  // WSD: center-to-center gap (dynamic, but base ~122px)
             header_height: 46.0,     // WSD: participant box height = 46px (single line)
-            row_height: 26.0,        // WSD: tighter row spacing
+            row_height: 26.45,       // WSD: adjusted for total height match
             participant_width: 92.0, // WSD: minimum participant width = 92px
             font_size: 14.0,         // WSD: uses 14px font
             activation_width: 10.0,
@@ -783,7 +783,9 @@ impl RenderState {
     }
 
     fn content_start(&self) -> f64 {
-        self.header_top() + self.config.header_height + self.config.row_height
+        // +5.55px adjustment for WSD Y-coordinate compatibility
+        // WSD first message Y: 250.5, OSD was: 244.95
+        self.header_top() + self.config.header_height + self.config.row_height + 5.55
     }
 
     fn next_number(&mut self) -> Option<u32> {
