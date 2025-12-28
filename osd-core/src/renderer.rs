@@ -143,7 +143,8 @@ const BLOCK_NESTED_FRAME_SHIFT: f64 = 24.2;      // Fine-tuned from 18
 const PARALLEL_BLOCK_GAP: f64 = 13.5;            // Fine-tuned from 22
 const MESSAGE_SPACING_MULT: f64 = 0.375;         // Fine-tuned from 0.5625
 const SELF_MESSAGE_MIN_SPACING: f64 = 54.0;      // Fine-tuned from 78
-const SELF_MESSAGE_GAP: f64 = 10.7;              // Fine-tuned from 16
+const SELF_MESSAGE_GAP: f64 = 14.0;              // WSD: gap after self-message loop
+const SELF_MESSAGE_PRE_GAP_REDUCTION: f64 = 9.0; // WSD: reduced gap before self-message
 const CREATE_MESSAGE_SPACING: f64 = 27.5;        // Fine-tuned from 41
 const DESTROY_SPACING: f64 = 10.7;               // Fine-tuned from 15
 const NOTE_PADDING: f64 = 5.7;                   // Fine-tuned from 9.5
@@ -212,7 +213,9 @@ fn message_spacing_line_height(config: &Config) -> f64 {
 fn self_message_spacing(config: &Config, lines: usize) -> f64 {
     let line_height = config.font_size + 4.0;
     let text_block_height = lines as f64 * line_height;
-    let loop_height = (text_block_height + 10.0).max(25.0);
+    // WSD: loop height equals text block height, no extra padding
+    let loop_height = text_block_height.max(25.0);
+    // WSD: gap after loop = 14px (pre-gap reduction is applied separately before self-message)
     let base = loop_height + SELF_MESSAGE_GAP;
     if lines >= 3 {
         base.max(SELF_MESSAGE_MIN_SPACING)
@@ -894,10 +897,9 @@ impl RenderState {
     }
 
     fn content_start(&self) -> f64 {
-        // Adjustment for WSD Y-coordinate compatibility
         // WSD first message Y: 250.5
-        // With row_height=28.03: 110.5 + 108 + 28.03 + 3.97 = 250.5
-        self.header_top() + self.config.header_height + self.config.row_height + 3.97
+        // header_top (110.5) + header_height (108) + row_height (32) = 250.5
+        self.header_top() + self.config.header_height + self.config.row_height
     }
 
     fn next_number(&mut self) -> Option<u32> {
@@ -2362,6 +2364,11 @@ fn render_message(
         state.current_y += extra_height;
     }
 
+    // WSD: self-messages have a reduced pre-gap
+    if is_self {
+        state.current_y -= SELF_MESSAGE_PRE_GAP_REDUCTION;
+    }
+
     let y = state.current_y;
     let has_label_text = lines.iter().any(|line| !line.trim().is_empty());
 
@@ -2372,7 +2379,8 @@ fn render_message(
         // Self message - loop back
         let loop_width = 40.0;
         let text_block_height = lines.len() as f64 * line_height;
-        let loop_height = (text_block_height + 10.0).max(25.0);
+        // WSD: loop height equals text block height, no extra padding
+        let loop_height = text_block_height.max(25.0);
         let arrow_end_x = x1;
         let arrow_end_y = y + loop_height;
         // Arrowhead points left (PI radians)
