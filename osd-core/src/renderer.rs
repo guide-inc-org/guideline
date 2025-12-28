@@ -45,8 +45,8 @@ impl Default for Config {
         //   - Box width: dynamic based on text
         Self {
             padding: 10.5,           // WSD: padding from SVG edge
-            left_margin: 58.0,       // WSD: first lifeline at 114.5, adjusted for stress test
-            right_margin: 68.0,      // Symmetric
+            left_margin: 66.0,       // WSD: Mobile lifeline at 124.5, box left edge at 78.5
+            right_margin: 10.0,      // WSD: minimal right margin, dynamically expanded for notes
             participant_gap: 85.0,   // WSD: minimum gap for participants with no messages between
             header_height: 46.0,     // WSD: participant box height = 46px (single line)
             row_height: 32.0,        // WSD: actual row height = 32px
@@ -668,18 +668,22 @@ impl RenderState {
                 let half_widths = (current_width + next_width) / 2.0;
                 let neither_is_actor = !current_is_actor && !next_is_actor;
 
+                let either_is_actor = current_is_actor || next_is_actor;
                 let edge_padding = if calculated_gap > 500.0 {
                     // Very high (delay messages): minimal extra padding
                     10.0
+                } else if either_is_actor && calculated_gap > 130.0 {
+                    // Actor-adjacent gaps: WSD uses tighter spacing around actors
+                    33.0
                 } else if neither_is_actor && half_widths > 155.0 && calculated_gap > 130.0 {
                     // Two large normal boxes with medium traffic: extra padding
-                    85.0
+                    90.0
                 } else if calculated_gap > 130.0 {
-                    // Medium-high traffic: WSD uses ~40px for these gaps
-                    42.0
+                    // Medium-high traffic: WSD uses ~49px for these gaps
+                    49.0
                 } else if calculated_gap > config.participant_gap {
                     // Medium traffic: moderate padding
-                    18.0
+                    25.0
                 } else {
                     // Low traffic: edge_padding depends on individual participant widths
                     let max_width = current_width.max(next_width);
@@ -702,13 +706,13 @@ impl RenderState {
                         // One very wide, one medium-small: negative padding
                         // WSD Notify→Payment: max=161.2, min=114.8, diff=46.4, gap=132, ep≈-6
                         -6.0
-                    } else if min_width_val < 110.0 {
-                        // One small participant: extra padding
+                    } else if min_width_val < 115.0 {
+                        // One small participant: moderate padding
                         // WSD Kafka→ML, Payment→Worker
-                        12.0
+                        10.0
                     } else {
                         // Medium participants: moderate padding
-                        10.0
+                        11.0
                     }
                 };
 
@@ -2644,7 +2648,7 @@ fn render_note(
 
     writeln!(
         svg,
-        r##"<path d="{path}" fill="#e0e0a0" stroke="{stroke}" stroke-width="1"/>"##,
+        r##"<path d="{path}" fill="none" stroke="{stroke}" stroke-width="1"/>"##,
         path = fold_path,
         stroke = theme.note_stroke
     )
