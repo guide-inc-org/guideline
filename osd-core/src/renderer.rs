@@ -38,19 +38,24 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        // Values calibrated to match websequencediagrams.com output exactly
+        // Reference: WSD Ultimate Stress Test produces:
+        //   - First participant box: x=78.5, y=110.5
+        //   - Box height: 46px (1 line), 108px (2+ lines)
+        //   - Box width: dynamic based on text
         Self {
-            padding: 10.5,
-            left_margin: 40.0,
-            right_margin: 40.0,
-            participant_gap: 150.0,
-            header_height: 40.0,
-            row_height: 32.0,
-            participant_width: 90.0,
-            font_size: 12.0,
+            padding: 10.5,           // WSD: padding from SVG edge
+            left_margin: 68.0,       // WSD: first box at x=78.5, so 78.5 - 10.5 = 68
+            right_margin: 68.0,      // Symmetric
+            participant_gap: 122.0,  // WSD: center-to-center gap (dynamic, but base ~122px)
+            header_height: 46.0,     // WSD: participant box height = 46px (single line)
+            row_height: 26.0,        // WSD: tighter row spacing
+            participant_width: 92.0, // WSD: minimum participant width = 92px
+            font_size: 14.0,         // WSD: uses 14px font
             activation_width: 10.0,
             note_padding: 6.0,
             block_margin: 5.0,
-            title_height: 50.0,
+            title_height: 100.0,     // WSD: title + space before participant boxes (y=110.5)
             theme: Theme::default(),
         }
     }
@@ -143,7 +148,7 @@ const CREATE_MESSAGE_SPACING: f64 = 41.0;
 const DESTROY_SPACING: f64 = 15.0;
 const NOTE_PADDING: f64 = 9.5;
 const NOTE_LINE_HEIGHT_EXTRA: f64 = 6.0;
-const NOTE_MARGIN: f64 = 24.0;
+const NOTE_MARGIN: f64 = 16.0;  // WSD uses tighter spacing for notes
 const STATE_LINE_HEIGHT_EXTRA: f64 = 11.0;
 const REF_LINE_HEIGHT_EXTRA: f64 = 16.333333;
 const ELSE_RETURN_GAP: f64 = 1.0;
@@ -342,6 +347,70 @@ fn block_tab_width(kind: &str) -> f64 {
     (kind.chars().count() as f64 * 12.0 + 21.0).max(57.0)
 }
 
+/// Calculate note width based on text content
+fn calculate_note_width(text: &str, config: &Config) -> f64 {
+    let lines: Vec<&str> = text.split("\\n").collect();
+    let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(10);
+    let padding = config.note_padding;
+    (max_line_len as f64 * 10.0 + padding * 2.0).max(80.0).min(300.0)
+}
+
+/// Calculate required right margin based on right-side notes on the rightmost participant only
+fn calculate_right_margin(
+    participants: &[Participant],
+    items: &[Item],
+    config: &Config,
+) -> f64 {
+    let rightmost_id = match participants.last() {
+        Some(p) => p.id().to_string(),
+        None => return config.right_margin,
+    };
+    let mut max_right_note_width: f64 = 0.0;
+
+    fn process_items_for_right_notes(
+        items: &[Item],
+        rightmost_id: &str,
+        max_width: &mut f64,
+        config: &Config,
+    ) {
+        for item in items {
+            match item {
+                Item::Note {
+                    position: NotePosition::Right,
+                    participants,
+                    text,
+                } => {
+                    // Only consider notes on the rightmost participant
+                    if participants.first().map(|s| s.as_str()) == Some(rightmost_id) {
+                        let note_width = calculate_note_width(text, config);
+                        if note_width > *max_width {
+                            *max_width = note_width;
+                        }
+                    }
+                }
+                Item::Block {
+                    items, else_items, ..
+                } => {
+                    process_items_for_right_notes(items, rightmost_id, max_width, config);
+                    if let Some(else_items) = else_items {
+                        process_items_for_right_notes(else_items, rightmost_id, max_width, config);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    process_items_for_right_notes(items, &rightmost_id, &mut max_right_note_width, config);
+
+    // right_margin needs to accommodate: gap (10) + note_width
+    if max_right_note_width > 0.0 {
+        (max_right_note_width + 10.0).max(config.right_margin)
+    } else {
+        config.right_margin
+    }
+}
+
 /// Calculate dynamic gaps between participants based on message text lengths
 fn calculate_participant_gaps(
     participants: &[Participant],
@@ -358,8 +427,9 @@ fn calculate_participant_gaps(
         participant_index.insert(p.id().to_string(), i);
     }
 
-    // Initialize gaps with minimum gap
-    let min_gap = config.participant_gap * 0.6; // Minimum gap (60% of default)
+    // Initialize gaps with WSD-compatible minimum gap
+    // WSD uses ~59px center-to-center for simple diagrams
+    let min_gap = config.participant_gap;
     let mut gaps: Vec<f64> = vec![min_gap; participants.len() - 1];
 
     // Calculate max text width for each adjacent pair
@@ -385,14 +455,34 @@ fn calculate_participant_gaps(
                             let text_width = estimate_message_width(text, config.font_size);
 
                             // Distribute needed width across gaps between the participants
+                            // WSD: text is distributed with minimal extra padding
                             let gap_count = (max_idx - min_idx) as f64;
-                            let needed_gap =
-                                text_width / gap_count + config.participant_width * 0.3;
+                            let needed_gap = text_width / gap_count + 10.0;
 
                             // Update gaps between the participants
                             for gap_idx in min_idx..max_idx {
                                 if needed_gap > gaps[gap_idx] {
                                     gaps[gap_idx] = needed_gap;
+                                }
+                            }
+                        }
+                    }
+                }
+                Item::Note {
+                    position: NotePosition::Right,
+                    participants: note_participants,
+                    ..
+                } => {
+                    // Right-side notes: WSD allows notes to overlap with next participant
+                    // Only ensure minimal gap - note rendering handles overlap
+                    if let Some(participant) = note_participants.first() {
+                        if let Some(&idx) = participant_index.get(participant) {
+                            if idx < gaps.len() {
+                                // WSD: notes don't significantly increase gaps
+                                // They overlap or extend outside bounds
+                                let needed_gap = config.participant_gap * 1.3;
+                                if needed_gap > gaps[idx] {
+                                    gaps[idx] = needed_gap;
                                 }
                             }
                         }
@@ -413,18 +503,12 @@ fn calculate_participant_gaps(
 
     process_items(items, &participant_index, &mut gaps, config);
 
-    // Also consider participant name lengths
-    for i in 0..participants.len() - 1 {
-        let name1_width = estimate_message_width(&participants[i].name, config.font_size);
-        let name2_width = estimate_message_width(&participants[i + 1].name, config.font_size);
-        let needed_for_names = (name1_width + name2_width) / 2.0 + 20.0;
-        if needed_for_names > gaps[i] {
-            gaps[i] = needed_for_names;
-        }
-    }
+    // WSD: participant name lengths don't directly increase gaps
+    // The participant box widths (already calculated elsewhere) handle this
+    // No additional gap increase needed for names
 
-    // Cap maximum gap
-    let max_gap = config.participant_gap * 3.0;
+    // Cap maximum gap (balance between message text and reasonable width)
+    let max_gap = config.participant_gap * 5.0;
     for gap in &mut gaps {
         if *gap > max_gap {
             *gap = max_gap;
@@ -443,18 +527,30 @@ impl RenderState {
         footer_style: FooterStyle,
     ) -> Self {
         let mut config = config;
-        let line_height = config.font_size + 2.0;
+        // WSD header height calculation:
+        // - 1 line: 46px
+        // - 2+ lines: 108px (WSD caps at 108px regardless of line count)
+        // - Actor: ~108px for 2-line names
         let mut required_header_height = config.header_height;
         for p in &participants {
             let lines = p.name.split("\\n").count();
-            let total_height = lines as f64 * line_height;
             let needed = match p.kind {
-                ParticipantKind::Participant => total_height + 10.0,
+                ParticipantKind::Participant => {
+                    // WSD: 46px for 1 line, 108px for 2+ lines (capped)
+                    if lines <= 1 {
+                        46.0
+                    } else {
+                        108.0 // WSD uses fixed 108px for multi-line
+                    }
+                }
                 ParticipantKind::Actor => {
-                    // Stick figure (38px) + name below + margins
-                    let figure_height = 38.0;
-                    let name_height = lines as f64 * line_height;
-                    figure_height + name_height + 15.0
+                    // WSD: Actor has stick figure + name below
+                    // ~85px for 1-line, ~108px for 2+ lines
+                    if lines <= 1 {
+                        85.0
+                    } else {
+                        108.0
+                    }
                 }
             };
             if needed > required_header_height {
@@ -469,8 +565,18 @@ impl RenderState {
         let min_width = config.participant_width;
 
         for p in &participants {
-            let text_width = estimate_text_width(&p.name, config.font_size);
-            let width = (text_width + 8.0).max(min_width);
+            // WSD participant box width calculation:
+            // - Multi-line: "Mobile\nClient" (6 chars) → 92px, chars * 11.6 + 22
+            // - Single-line: ":Auth::Service" (14 chars) → 158px, chars * 9.7 + 22
+            let lines: Vec<&str> = p.name.split("\\n").collect();
+            let max_chars = lines.iter().map(|l| l.chars().count()).max().unwrap_or(1);
+            let width = if lines.len() > 1 {
+                // Multi-line: ~11.6px per char + 22px padding
+                (max_chars as f64 * 11.6 + 22.0).max(min_width)
+            } else {
+                // Single-line: ~9.7px per char + 22px padding
+                (max_chars as f64 * 9.7 + 22.0).max(min_width)
+            };
             participant_widths.insert(p.id().to_string(), width);
         }
 
@@ -479,7 +585,8 @@ impl RenderState {
         // Left margin for notes/actions on leftmost participant
         let left_margin = config.left_margin;
         // Right margin for self-loops and notes on rightmost participant
-        let right_margin = config.right_margin;
+        // Dynamically calculate based on right-side notes
+        let right_margin = calculate_right_margin(&participants, items, &config);
 
         let mut participant_x = HashMap::new();
         let first_width = participants
@@ -496,8 +603,10 @@ impl RenderState {
                     .get(i + 1)
                     .map(|np| *participant_widths.get(np.id()).unwrap_or(&min_width))
                     .unwrap_or(min_width);
-                // Gap is between the edges of adjacent participants
-                let actual_gap = gaps[i].max((current_width + next_width) / 2.0 + 30.0);
+                // WSD: edge-to-edge gap is ~20px minimum
+                // Center-to-center = half_widths + edge_gap
+                let min_center_gap = (current_width + next_width) / 2.0 + 20.0;
+                let actual_gap = gaps[i].max(min_center_gap);
                 current_x += actual_gap;
             }
         }
@@ -2413,7 +2522,7 @@ fn render_note(
             let px = state.get_x(&participants[0]);
             let p_width = state.get_participant_width(&participants[0]);
             let w = content_width.min(300.0);
-            (px + p_width / 2.0 + 10.0, w, "start")
+            (px + p_width / 2.0 + 5.0, w, "start")
         }
         NotePosition::Over => {
             if participants.len() == 1 {
