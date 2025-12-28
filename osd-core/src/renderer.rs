@@ -47,7 +47,7 @@ impl Default for Config {
             padding: 10.5,           // WSD: padding from SVG edge
             left_margin: 68.0,       // WSD: first box at x=78.5, so 78.5 - 10.5 = 68
             right_margin: 68.0,      // Symmetric
-            participant_gap: 122.0,  // WSD: center-to-center gap (dynamic, but base ~122px)
+            participant_gap: 99.6,   // WSD: center-to-center gap (fine-tuned for 2248px width)
             header_height: 46.0,     // WSD: participant box height = 46px (single line)
             row_height: 28.03,       // WSD: fine-tuned for height match (3528px)
             participant_width: 92.0, // WSD: minimum participant width = 92px
@@ -441,7 +441,7 @@ fn calculate_participant_gaps(
     ) {
         for item in items {
             match item {
-                Item::Message { from, to, text, .. } => {
+                Item::Message { from, to, text, arrow, .. } => {
                     if let (Some(&from_idx), Some(&to_idx)) =
                         (participant_index.get(from), participant_index.get(to))
                     {
@@ -454,10 +454,13 @@ fn calculate_participant_gaps(
 
                             let text_width = estimate_message_width(text, config.font_size);
 
+                            // WSD: delay messages need extra horizontal space for diagonal lines
+                            let delay_extra = arrow.delay.map(|d| d as f64 * 5.0).unwrap_or(0.0);
+
                             // Distribute needed width across gaps between the participants
                             // WSD: text is distributed with minimal extra padding
                             let gap_count = (max_idx - min_idx) as f64;
-                            let needed_gap = text_width / gap_count + 10.0;
+                            let needed_gap = text_width / gap_count + 10.0 + delay_extra;
 
                             // Update gaps between the participants
                             for gap_idx in min_idx..max_idx {
