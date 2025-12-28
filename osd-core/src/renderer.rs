@@ -326,6 +326,52 @@ fn text_char_weight(c: char) -> f64 {
     }
 }
 
+/// Character width for participant box calculation (WSD proportional font metrics)
+/// Based on analysis of WSD SVG glyph definitions and actual output comparison
+fn participant_char_width(c: char) -> f64 {
+    match c {
+        // Very wide: W, M, m, w, @
+        'W' | 'w' => 14.0,
+        'M' | 'm' => 12.5,
+        '@' | '%' => 14.0,
+        // Wide uppercase
+        'A' | 'B' | 'C' | 'D' | 'E' | 'G' | 'H' | 'K' | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'X' | 'Y' | 'Z' => 12.0,
+        // Narrow uppercase
+        'F' | 'I' | 'J' | 'L' => 7.0,
+        // Wide lowercase
+        'o' | 'e' | 'a' | 'n' | 'u' | 'v' | 'x' | 'z' | 'b' | 'd' | 'g' | 'h' | 'k' | 'p' | 'q' | 's' | 'c' | 'y' => 8.5,
+        // Narrow lowercase
+        'i' | 'j' | 'l' => 4.0,
+        't' | 'f' | 'r' => 6.0,
+        // Punctuation and special chars (WSD uses wider glyphs for these)
+        ':' => 6.5,
+        '-' | '_' => 7.0,
+        '[' | ']' | '(' | ')' | '{' | '}' => 7.0,
+        '.' | ',' | '\'' | '`' | ';' => 4.0,
+        ' ' => 5.0,
+        // Numbers
+        '0'..='9' => 9.0,
+        // Default for other ASCII
+        _ if c.is_ascii() => 8.5,
+        // CJK and other characters
+        _ => 14.0,
+    }
+}
+
+/// Calculate participant box width based on WSD proportional font metrics
+fn calculate_participant_width(name: &str, min_width: f64) -> f64 {
+    let lines: Vec<&str> = name.split("\\n").collect();
+    let max_line_width = lines
+        .iter()
+        .map(|line| line.chars().map(participant_char_width).sum::<f64>())
+        .fold(0.0_f64, |a, b| a.max(b));
+
+    // WSD uses consistent padding for all participant boxes
+    let padding = 50.0;
+
+    (max_line_width + padding).max(min_width)
+}
+
 fn max_weighted_line(text: &str) -> f64 {
     text.split("\\n")
         .map(|line| line.chars().map(text_char_weight).sum::<f64>())
@@ -570,22 +616,12 @@ impl RenderState {
             config.header_height = required_header_height;
         }
         // Calculate individual participant widths based on their names
+        // Using WSD proportional font metrics for accurate box widths
         let mut participant_widths: HashMap<String, f64> = HashMap::new();
         let min_width = config.participant_width;
 
         for p in &participants {
-            // WSD participant box width calculation:
-            // - Multi-line: "Mobile\nClient" (6 chars) → 92px, chars * 11.6 + 22
-            // - Single-line: ":Auth::Service" (14 chars) → 158px, chars * 9.7 + 22
-            let lines: Vec<&str> = p.name.split("\\n").collect();
-            let max_chars = lines.iter().map(|l| l.chars().count()).max().unwrap_or(1);
-            let width = if lines.len() > 1 {
-                // Multi-line: ~11.6px per char + 22px padding
-                (max_chars as f64 * 11.6 + 22.0).max(min_width)
-            } else {
-                // Single-line: ~9.7px per char + 22px padding
-                (max_chars as f64 * 9.7 + 22.0).max(min_width)
-            };
+            let width = calculate_participant_width(&p.name, min_width);
             participant_widths.insert(p.id().to_string(), width);
         }
 
@@ -1362,8 +1398,6 @@ fn render_block_labels(svg: &mut String, state: &RenderState) {
         let label_height = BLOCK_LABEL_HEIGHT;
         let label_text_offset = 16.0;
         let notch_size = 5.0;
-        let label_font_size = state.config.font_size - 1.0;
-        let label_padding_x = 6.0;
 
         // Pentagon path
         let pentagon_path = format!(
@@ -1395,27 +1429,11 @@ fn render_block_labels(svg: &mut String, state: &RenderState) {
         )
         .unwrap();
 
-        // Condition label (outside the pentagon)
+        // Condition label (text only, no background per WSD style)
         if !bl.label.is_empty() {
             let condition_text = format!("[{}]", bl.label);
             let text_x = x1 + label_width + 8.0;
             let text_y = start_y + label_text_offset;
-            let base_width = (estimate_text_width(&condition_text, label_font_size)
-                - TEXT_WIDTH_PADDING)
-                .max(0.0);
-            let bg_width = base_width + label_padding_x * 2.0;
-
-            writeln!(
-                svg,
-                r##"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="1"/>"##,
-                x = text_x - label_padding_x,
-                y = start_y,
-                w = bg_width,
-                h = label_height,
-                fill = theme.block_label_fill,
-                stroke = theme.block_stroke
-            )
-            .unwrap();
 
             writeln!(
                 svg,
@@ -1427,7 +1445,7 @@ fn render_block_labels(svg: &mut String, state: &RenderState) {
             .unwrap();
         }
 
-        // Else separator
+        // Else separator (dashed line only, no [else] text per WSD style)
         if let Some(else_y) = bl.else_y {
             writeln!(
                 svg,
@@ -1436,35 +1454,6 @@ fn render_block_labels(svg: &mut String, state: &RenderState) {
                 y = else_y,
                 x2 = x2,
                 c = theme.block_stroke
-            )
-            .unwrap();
-
-            let else_text = "[else]";
-            let else_text_x = x1 + 4.0;
-            let else_base_width =
-                (estimate_text_width(else_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
-            let else_bg_width = else_base_width + label_padding_x * 2.0;
-            let else_rect_y = else_y - label_height;
-            let else_text_y = else_rect_y + label_text_offset;
-
-            writeln!(
-                svg,
-                r##"<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{fill}" stroke="{stroke}" stroke-width="1"/>"##,
-                x = else_text_x - label_padding_x,
-                y = else_rect_y,
-                w = else_bg_width,
-                h = label_height,
-                fill = theme.block_label_fill,
-                stroke = theme.block_stroke
-            )
-            .unwrap();
-
-            writeln!(
-                svg,
-                r#"<text x="{x}" y="{y}" class="block-label">{label}</text>"#,
-                x = else_text_x,
-                y = else_text_y,
-                label = else_text
             )
             .unwrap();
         }
