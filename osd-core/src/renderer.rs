@@ -131,15 +131,15 @@ const TEXT_WIDTH_SCALE: f64 = 1.3;
 const MESSAGE_WIDTH_PADDING: f64 = 4.0;  // WSD: minimal padding
 const MESSAGE_WIDTH_SCALE: f64 = 0.82;  // WSD: text width estimate for gap calculation
 const DELAY_UNIT: f64 = 18.0;
-const BLOCK_LABEL_HEIGHT: f64 = 21.8;             // Fine-tuned for row_height=32
-const BLOCK_FOOTER_PADDING_LEVEL1: f64 = 0.87;   // Fine-tuned for row_height=32
-const BLOCK_FOOTER_PADDING_DEEP: f64 = 0.87;     // Fine-tuned for row_height=32
-const BLOCK_FOOTER_PADDING_TOP_FACTOR: f64 = 1.07; // Fine-tuned from 1.8
-const BLOCK_ELSE_SPACING_LEVEL1: f64 = 0.79;     // Fine-tuned from 1.1875
-const BLOCK_ELSE_SPACING_DEEP: f64 = 0.74;       // Fine-tuned from 1.15625
-const BLOCK_ELSE_TOP_SPACING_FACTOR: f64 = 0.74; // Fine-tuned from 1.15625
-const BLOCK_NESTED_HEADER_ADJUST: f64 = 24.2;    // Fine-tuned from 18
-const BLOCK_NESTED_FRAME_SHIFT: f64 = 24.2;      // Fine-tuned from 18
+const BLOCK_LABEL_HEIGHT: f64 = 20.0;             // WSD: label pentagon height
+const BLOCK_FOOTER_PADDING_LEVEL1: f64 = 0.5;    // WSD: reduced footer padding
+const BLOCK_FOOTER_PADDING_DEEP: f64 = 0.5;      // WSD: reduced footer padding
+const BLOCK_FOOTER_PADDING_TOP_FACTOR: f64 = 0.5; // WSD: reduced top-level footer
+const BLOCK_ELSE_SPACING_LEVEL1: f64 = 0.5;      // WSD: else section spacing
+const BLOCK_ELSE_SPACING_DEEP: f64 = 0.5;        // WSD: else section spacing
+const BLOCK_ELSE_TOP_SPACING_FACTOR: f64 = 0.5;  // WSD: else section spacing
+const BLOCK_NESTED_HEADER_ADJUST: f64 = 20.0;    // WSD: nested block header adjust
+const BLOCK_NESTED_FRAME_SHIFT: f64 = 20.0;      // WSD: nested block frame shift
 const PARALLEL_BLOCK_GAP: f64 = 13.5;            // Fine-tuned from 22
 const MESSAGE_SPACING_MULT: f64 = 0.375;         // Fine-tuned from 0.5625
 const SELF_MESSAGE_MIN_SPACING: f64 = 54.0;      // Fine-tuned from 78
@@ -149,7 +149,7 @@ const CREATE_MESSAGE_SPACING: f64 = 27.5;        // Fine-tuned from 41
 const DESTROY_SPACING: f64 = 10.7;               // Fine-tuned from 15
 const NOTE_PADDING: f64 = 5.7;                   // Fine-tuned from 9.5
 const NOTE_LINE_HEIGHT_EXTRA: f64 = 3.4;         // Fine-tuned from 6
-const NOTE_MARGIN: f64 = 7.5;                    // Fine-tuned from 16
+const NOTE_MARGIN: f64 = 14.0;                   // WSD: ~14px margin between notes
 const STATE_LINE_HEIGHT_EXTRA: f64 = 11.0;
 const REF_LINE_HEIGHT_EXTRA: f64 = 16.333333;
 const ELSE_RETURN_GAP: f64 = 1.0;
