@@ -52,7 +52,7 @@ impl Default for Config {
             row_height: 32.0,        // WSD: actual row height = 32px
             participant_width: 92.0, // WSD: minimum participant width = 92px
             font_size: 14.0,         // WSD: uses 14px font
-            activation_width: 10.0,
+            activation_width: 8.0,   // WSD: narrower activation bars
             note_padding: 6.0,
             block_margin: 5.0,
             title_height: 100.0,     // WSD: title + space before participant boxes (y=110.5)
@@ -131,15 +131,15 @@ const TEXT_WIDTH_SCALE: f64 = 1.3;
 const MESSAGE_WIDTH_PADDING: f64 = 4.0;  // WSD: minimal padding
 const MESSAGE_WIDTH_SCALE: f64 = 0.82;  // WSD: text width estimate for gap calculation
 const DELAY_UNIT: f64 = 18.0;
-const BLOCK_LABEL_HEIGHT: f64 = 20.0;             // WSD: label pentagon height
-const BLOCK_FOOTER_PADDING_LEVEL1: f64 = 0.5;    // WSD: reduced footer padding
-const BLOCK_FOOTER_PADDING_DEEP: f64 = 0.5;      // WSD: reduced footer padding
-const BLOCK_FOOTER_PADDING_TOP_FACTOR: f64 = 0.5; // WSD: reduced top-level footer
-const BLOCK_ELSE_SPACING_LEVEL1: f64 = 0.5;      // WSD: else section spacing
-const BLOCK_ELSE_SPACING_DEEP: f64 = 0.5;        // WSD: else section spacing
-const BLOCK_ELSE_TOP_SPACING_FACTOR: f64 = 0.5;  // WSD: else section spacing
-const BLOCK_NESTED_HEADER_ADJUST: f64 = 20.0;    // WSD: nested block header adjust
-const BLOCK_NESTED_FRAME_SHIFT: f64 = 20.0;      // WSD: nested block frame shift
+const BLOCK_LABEL_HEIGHT: f64 = 22.0;             // WSD: label pentagon height
+const BLOCK_FOOTER_PADDING_LEVEL1: f64 = 0.75;   // WSD: footer padding for depth 1
+const BLOCK_FOOTER_PADDING_DEEP: f64 = 0.75;     // WSD: footer padding for nested
+const BLOCK_FOOTER_PADDING_TOP_FACTOR: f64 = 0.9; // WSD: top-level footer padding
+const BLOCK_ELSE_SPACING_LEVEL1: f64 = 0.7;      // WSD: else section spacing
+const BLOCK_ELSE_SPACING_DEEP: f64 = 0.65;       // WSD: else section spacing nested
+const BLOCK_ELSE_TOP_SPACING_FACTOR: f64 = 0.65; // WSD: else top spacing
+const BLOCK_NESTED_HEADER_ADJUST: f64 = 22.0;    // WSD: nested block header adjust
+const BLOCK_NESTED_FRAME_SHIFT: f64 = 22.0;      // WSD: nested block frame shift
 const PARALLEL_BLOCK_GAP: f64 = 13.5;            // Fine-tuned from 22
 const MESSAGE_SPACING_MULT: f64 = 0.375;         // Fine-tuned from 0.5625
 const SELF_MESSAGE_MIN_SPACING: f64 = 54.0;      // Fine-tuned from 78
@@ -2463,7 +2463,7 @@ fn render_message(
         let y2 = y + delay_offset;
 
         let text_x = (x1 + x2) / 2.0;
-        let text_y = (y + y2) / 2.0 - 8.0;
+        let text_y = (y + y2) / 2.0 - 6.0;  // WSD: label slightly above arrow
 
         // Calculate arrowhead direction and shorten line to not overlap with arrowhead
         let direction = arrow_direction(x1, y, x2, y2);
@@ -2519,16 +2519,43 @@ fn render_message(
         } else {
             0.0
         };
+        // Calculate rotation angle for delayed messages (slanted arrow)
+        let rotation = if delay_offset > 0.0 {
+            let dx = x2 - x1;
+            let dy = delay_offset;
+            let angle_rad = dy.atan2(dx.abs());
+            let angle_deg = angle_rad.to_degrees();
+            // Rotate in the direction of the arrow
+            if dx < 0.0 { -angle_deg } else { angle_deg }
+        } else {
+            0.0
+        };
+
         for (i, line) in lines.iter().enumerate() {
             let line_y = text_y - (lines.len() - 1 - i) as f64 * line_height + label_offset;
-            writeln!(
-                svg,
-                r#"  <text x="{x}" y="{y}" class="message-text" text-anchor="middle">{t}</text>"#,
-                x = text_x,
-                y = line_y,
-                t = escape_xml(line)
-            )
-            .unwrap();
+            if rotation.abs() > 0.1 {
+                // Apply rotation transform for delayed messages
+                writeln!(
+                    svg,
+                    r#"  <text x="{x}" y="{y}" class="message-text" text-anchor="middle" transform="rotate({rot},{cx},{cy})">{t}</text>"#,
+                    x = text_x,
+                    y = line_y,
+                    rot = rotation,
+                    cx = text_x,
+                    cy = line_y,
+                    t = escape_xml(line)
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    svg,
+                    r#"  <text x="{x}" y="{y}" class="message-text" text-anchor="middle">{t}</text>"#,
+                    x = text_x,
+                    y = line_y,
+                    t = escape_xml(line)
+                )
+                .unwrap();
+            }
         }
 
         // Close message group
@@ -2583,9 +2610,9 @@ fn render_note(
     let note_height = padding * 2.0 + lines.len() as f64 * line_height;
 
     // Calculate note width based on content or participant span
-    // Use 12.0 per char for CJK text estimation (wider than ASCII)
+    // WSD: ~8px per char for ASCII, narrower than default
     let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(10);
-    let content_width = (max_line_len as f64 * 10.0 + padding * 2.0).max(80.0);
+    let content_width = (max_line_len as f64 * 8.0 + padding * 2.0).max(70.0);
 
     let (x, note_width, text_anchor) = match position {
         NotePosition::Left => {
