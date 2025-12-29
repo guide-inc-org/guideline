@@ -126,68 +126,75 @@ struct RenderState {
     message_label_boxes: Vec<LabelBox>,
 }
 
+// ============================================
+// Text width calculation
+// ============================================
 const TEXT_WIDTH_PADDING: f64 = 41.0;
 const TEXT_WIDTH_SCALE: f64 = 1.3;
-const MESSAGE_WIDTH_PADDING: f64 = 4.0;  // WSD: minimal padding
-const MESSAGE_WIDTH_SCALE: f64 = 0.82;  // WSD: text width estimate for gap calculation
-const DELAY_UNIT: f64 = 18.0;
-// ブロック関連定数（シンプル化）
-const BLOCK_PADDING: f64 = 8.0;                  // 4隅同じパディング
-const BLOCK_LABEL_HEIGHT: f64 = 22.0;            // ラベル領域の高さ（ペンタゴン部分）
-const BLOCK_TITLE_PADDING: f64 = 12.0;           // タイトル行と最初のメッセージの間のパディング
-const BLOCK_FOOTER_PADDING: f64 = 8.0;           // フッター余白（統一）
-const BLOCK_ELSE_BEFORE: f64 = 8.0;              // else線の前の余白（小さめ）
-const BLOCK_ELSE_AFTER: f64 = 32.0;              // else線の後の余白（メッセージテキストが線と重ならないように）
-const BLOCK_NESTED_OFFSET: f64 = 22.0;           // ネスト時のオフセット
-const BLOCK_GAP: f64 = 14.0;                     // ブロック間の余白
+const MESSAGE_WIDTH_PADDING: f64 = 4.0;
+const MESSAGE_WIDTH_SCALE: f64 = 0.82;
 
-// 要素間余白
-const ROW_SPACING: f64 = 20.0;                   // 要素間の基本余白（広め）
+// ============================================
+// Message
+// ============================================
+const MESSAGE_TEXT_ABOVE_ARROW: f64 = 6.0;       // Text is rendered 6px above arrow
+const SELF_MESSAGE_MIN_SPACING: f64 = 54.0;      // Minimum spacing for self-message
+const SELF_MESSAGE_GAP: f64 = 14.0;              // Gap after self-message
+const SELF_MESSAGE_PRE_GAP_REDUCTION: f64 = 9.0; // Gap reduction before self-message
+const CREATE_MESSAGE_SPACING: f64 = 28.0;        // Extra spacing for create message
+const DESTROY_SPACING: f64 = 11.0;               // Extra spacing for destroy
+const DELAY_UNIT: f64 = 18.0;                    // Pixels per delay unit
+const MESSAGE_MULTILINE_HEIGHT_MULT: f64 = 0.375; // Line height multiplier for multiline messages
 
-const MESSAGE_SPACING_MULT: f64 = 0.375;         // Fine-tuned from 0.5625
-const SELF_MESSAGE_MIN_SPACING: f64 = 54.0;      // Fine-tuned from 78
-const SELF_MESSAGE_GAP: f64 = 14.0;              // WSD: gap after self-message loop
-const SELF_MESSAGE_PRE_GAP_REDUCTION: f64 = 9.0; // WSD: reduced gap before self-message
-const CREATE_MESSAGE_SPACING: f64 = 27.5;        // Fine-tuned from 41
-const DESTROY_SPACING: f64 = 10.7;               // Fine-tuned from 15
-// ノート関連定数（シンプル化）
-const NOTE_PADDING: f64 = 8.0;                   // 4隅同じパディング
-const NOTE_MARGIN: f64 = 10.0;                   // ノート端とライフライン間
-const NOTE_FOLD_SIZE: f64 = 8.0;                 // 折り目サイズ
-const NOTE_CHAR_WIDTH: f64 = 7.0;                // 文字幅推定値
-const NOTE_LINE_HEIGHT: f64 = 17.0;              // 行高さ（フォント13px + 4px）
-const NOTE_MIN_WIDTH: f64 = 50.0;                // 最小幅
-const STATE_LINE_HEIGHT_EXTRA: f64 = 11.0;
-const REF_LINE_HEIGHT_EXTRA: f64 = 16.333333;
-const ELSE_RETURN_GAP: f64 = 1.0;
-const SERIAL_FIRST_ROW_GAP: f64 = 0.0;
-const SERIAL_FIRST_ROW_PARALLEL_GAP: f64 = 1.0;
-const SERIAL_SELF_MESSAGE_ADJUST: f64 = 1.0;
-const ACTIVATION_START_GAP: f64 = 0.0;
-const ACTIVATION_CHAIN_GAP: f64 = 1.0;
-const REF_EXTRA_GAP: f64 = 2.5;
-const SELF_MESSAGE_ACTIVE_ADJUST: f64 = 1.0;
-const STATE_EXTRA_GAP: f64 = 0.0;
+// ============================================
+// Block (alt, opt, loop, etc.)
+// ============================================
+const BLOCK_LABEL_HEIGHT: f64 = 22.0;            // Pentagon label height
+const BLOCK_TITLE_PADDING: f64 = 12.0;           // Visual padding: label to first message
+const BLOCK_FOOTER_PADDING: f64 = 8.0;           // Padding: last message to block bottom
+const BLOCK_ELSE_BEFORE: f64 = 8.0;              // Padding before else line
+const BLOCK_ELSE_AFTER: f64 = 32.0;              // Padding after else line
+const BLOCK_GAP: f64 = 14.0;                     // Gap between blocks
+
+// ============================================
+// Note
+// ============================================
+const NOTE_PADDING: f64 = 8.0;                   // Inner padding (same on all sides)
+const NOTE_MARGIN: f64 = 10.0;                   // Margin between note and lifeline
+const NOTE_FOLD_SIZE: f64 = 8.0;                 // Corner fold size
+const NOTE_CHAR_WIDTH: f64 = 7.0;                // Estimated character width
+const NOTE_LINE_HEIGHT: f64 = 17.0;              // Line height (font 13px + 4px)
+const NOTE_MIN_WIDTH: f64 = 50.0;                // Minimum width
+
+// ============================================
+// Other elements
+// ============================================
+const ROW_SPACING: f64 = 20.0;                   // Base spacing between elements
+const STATE_LINE_HEIGHT_EXTRA: f64 = 11.0;       // Extra line height for state
+const REF_LINE_HEIGHT_EXTRA: f64 = 16.0;         // Extra line height for ref
+const REF_EXTRA_GAP: f64 = 3.0;                  // Extra gap after ref
+
+// ============================================
+// Message label collision avoidance
+// ============================================
 const MESSAGE_LABEL_COLLISION_PADDING: f64 = 2.0;
 const MESSAGE_LABEL_COLLISION_STEP_RATIO: f64 = 0.9;
 const MESSAGE_LABEL_ASCENT_FACTOR: f64 = 0.8;
 const MESSAGE_LABEL_DESCENT_FACTOR: f64 = 0.2;
 
 fn block_header_space(_config: &Config, _depth: usize) -> f64 {
-    // タイトル行（ペンタゴン+ラベル）の高さ + タイトルとコンテンツ間のパディング
-    BLOCK_LABEL_HEIGHT + BLOCK_TITLE_PADDING
+    // Pentagon height + visual padding + text offset absorption
+    // This makes BLOCK_TITLE_PADDING equal to the visual gap
+    BLOCK_LABEL_HEIGHT + BLOCK_TITLE_PADDING + MESSAGE_TEXT_ABOVE_ARROW
 }
 
-fn block_frame_shift(depth: usize) -> f64 {
-    if depth == 0 {
-        0.0
-    } else {
-        BLOCK_NESTED_OFFSET
-    }
+fn block_frame_shift(_depth: usize) -> f64 {
+    // Simplified: no shift regardless of depth
+    0.0
 }
 
 fn block_footer_padding(_config: &Config, _depth: usize) -> f64 {
-    // シンプル化：深さに関係なく統一値
+    // Simplified: unified value regardless of depth
     BLOCK_FOOTER_PADDING
 }
 
@@ -200,7 +207,7 @@ fn block_else_after(_config: &Config, _depth: usize) -> f64 {
 }
 
 fn message_spacing_line_height(config: &Config) -> f64 {
-    config.row_height * MESSAGE_SPACING_MULT
+    config.row_height * MESSAGE_MULTILINE_HEIGHT_MULT
 }
 
 fn self_message_spacing(config: &Config, lines: usize) -> f64 {
@@ -218,7 +225,7 @@ fn self_message_spacing(config: &Config, lines: usize) -> f64 {
 }
 
 fn note_line_height(_config: &Config) -> f64 {
-    // シンプル化：固定値（フォントサイズ13px + 余白4px = 17px）
+    // Simplified: fixed value (font 13px + padding 4px = 17px)
     NOTE_LINE_HEIGHT
 }
 
@@ -247,12 +254,9 @@ fn actor_footer_extra(_participants: &[Participant], _config: &Config) -> f64 {
     0.0
 }
 
-fn serial_first_row_gap(parallel_depth: usize) -> f64 {
-    if parallel_depth > 0 {
-        SERIAL_FIRST_ROW_PARALLEL_GAP
-    } else {
-        SERIAL_FIRST_ROW_GAP
-    }
+fn serial_first_row_gap(_parallel_depth: usize) -> f64 {
+    // Simplified: always 0 (no fine-tuning needed)
+    0.0
 }
 
 fn state_line_height(config: &Config) -> f64 {
@@ -581,16 +585,16 @@ fn calculate_participant_gaps(
                     participants: note_participants,
                     text,
                 } => {
-                    // ノート幅を計算
+                    // Calculate note width
                     let note_width = calculate_note_width(text, config);
 
                     if let Some(participant) = note_participants.first() {
                         if let Some(&idx) = participant_index.get(participant) {
                             match position {
                                 NotePosition::Left => {
-                                    // 左ノートの場合：左隣の参加者との間にスペースが必要
+                                    // Left note: needs space between left neighbor
                                     if idx > 0 {
-                                        // ノート幅 + マージン分のギャップが必要
+                                        // Need gap for note width + margins
                                         let needed_gap = note_width + NOTE_MARGIN * 2.0;
                                         if needed_gap > gaps[idx - 1] {
                                             gaps[idx - 1] = needed_gap;
@@ -598,7 +602,7 @@ fn calculate_participant_gaps(
                                     }
                                 }
                                 NotePosition::Right => {
-                                    // 右ノートの場合：右隣の参加者との間にスペースが必要
+                                    // Right note: needs space between right neighbor
                                     if idx < gaps.len() {
                                         let needed_gap = note_width + NOTE_MARGIN * 2.0;
                                         if needed_gap > gaps[idx] {
@@ -607,8 +611,8 @@ fn calculate_participant_gaps(
                                     }
                                 }
                                 NotePosition::Over => {
-                                    // 中央ノートは両端にまたがる場合のみ処理
-                                    // 単一参加者の場合は幅を超えない限り問題なし
+                                    // Over note: only process if spanning multiple participants
+                                    // Single participant case is fine as long as width doesn't exceed
                                 }
                             }
                         }
@@ -841,7 +845,7 @@ impl RenderState {
     fn apply_else_return_gap(&mut self, arrow: &Arrow) {
         if let Some(pending) = self.else_return_pending.last_mut() {
             if *pending && matches!(arrow.line, LineStyle::Dashed) {
-                self.current_y += ELSE_RETURN_GAP;
+                // Simplified: removed fine-tuning after else return
                 *pending = false;
             }
         }
@@ -853,10 +857,6 @@ impl RenderState {
 
     fn pop_serial_first_row_pending(&mut self) {
         self.serial_first_row_pending.pop();
-    }
-
-    fn in_serial_block(&self) -> bool {
-        !self.serial_first_row_pending.is_empty()
     }
 
     fn apply_serial_first_row_gap(&mut self) {
@@ -906,13 +906,6 @@ impl RenderState {
         if self.parallel_depth > 0 {
             self.parallel_depth -= 1;
         }
-    }
-
-    fn active_activation_count(&self) -> usize {
-        self.activations
-            .values()
-            .map(|acts| acts.iter().filter(|(_, end)| end.is_none()).count())
-            .sum()
     }
 
     /// Check if a participant has an active activation at the given Y position
@@ -1234,9 +1227,9 @@ fn calculate_block_bounds_with_label(
         x2 -= inset;
     }
 
-    // 最左端の参加者を含む場合でも、参加者ボックスの左端から適度なマージンを取る
-    // （paddingまで拡張しない）
-    // Note: WSDはブロックを参加者に近づけて配置する
+    // Even when including leftmost participant, keep moderate margin from participant box
+    // (don't extend to padding)
+    // Note: WSD places blocks close to participants
 
     (x1, x2)
 }
@@ -1261,27 +1254,17 @@ fn collect_block_backgrounds(
                 ..
             } => {
                 state.apply_else_return_gap(arrow);
-                let chain_gap = if *activate && depth == 0 && *active_activation_count == 1 {
-                    ACTIVATION_CHAIN_GAP
-                } else {
-                    0.0
-                };
                 let is_self = from == to;
                 let lines: Vec<&str> = text.split("\\n").collect();
                 let delay_offset = arrow.delay.map(|d| d as f64 * DELAY_UNIT).unwrap_or(0.0);
 
                 if is_self {
-                    // WSD: reduced gap before self-message (must match render_message)
+                    // Self message: reduce pre-gap then add spacing
                     state.current_y -= SELF_MESSAGE_PRE_GAP_REDUCTION;
-                    let mut spacing = self_message_spacing(&state.config, lines.len());
-                    if state.in_serial_block() {
-                        spacing -= SERIAL_SELF_MESSAGE_ADJUST;
-                    }
-                    if *active_activation_count > 0 {
-                        spacing -= SELF_MESSAGE_ACTIVE_ADJUST;
-                    }
+                    let spacing = self_message_spacing(&state.config, lines.len());
                     state.current_y += spacing;
                 } else {
+                    // Regular message
                     let spacing_line_height = message_spacing_line_height(&state.config);
                     let extra_height = if lines.len() > 1 {
                         (lines.len() - 1) as f64 * spacing_line_height
@@ -1299,13 +1282,6 @@ fn collect_block_backgrounds(
                 }
 
                 state.apply_serial_first_row_gap();
-
-                if *activate && depth == 0 {
-                    state.current_y += ACTIVATION_START_GAP;
-                }
-                if chain_gap > 0.0 {
-                    state.current_y += chain_gap;
-                }
                 if *activate {
                     *active_activation_count += 1;
                 }
@@ -1318,14 +1294,14 @@ fn collect_block_backgrounds(
                 let line_height = note_line_height(&state.config);
                 let note_height =
                     note_padding(&state.config) * 2.0 + lines.len() as f64 * line_height;
-                // ROW_SPACING を使用（render_note と統一）
+                // Use ROW_SPACING (consistent with render_note)
                 state.current_y += note_height.max(state.config.row_height) + ROW_SPACING;
             }
             Item::State { text, .. } => {
                 let lines: Vec<&str> = text.split("\\n").collect();
                 let line_height = state_line_height(&state.config);
                 let box_height = state.config.note_padding * 2.0 + lines.len() as f64 * line_height;
-                state.current_y += box_height + item_pre_gap(&state.config) + STATE_EXTRA_GAP;
+                state.current_y += box_height + item_pre_gap(&state.config);
             }
             Item::Ref { text, .. } => {
                 let lines: Vec<&str> = text.split("\\n").collect();
@@ -1429,7 +1405,7 @@ fn collect_block_backgrounds(
                 state.current_y += block_header_space(&state.config, depth);
                 collect_block_backgrounds(state, items, depth + 1, active_activation_count);
 
-                // else線の前にパディングを追加（小さめ）
+                // Add padding before else line (small)
                 let else_y = if else_items.is_some() {
                     state.current_y += block_else_before(&state.config, depth);
                     Some(state.current_y)
@@ -1439,7 +1415,7 @@ fn collect_block_backgrounds(
 
                 if let Some(else_items) = else_items {
                     state.push_else_return_pending();
-                    // else線の後にパディングを追加（十分な間隔）
+                    // Add padding after else line (sufficient gap)
                     state.current_y += block_else_after(&state.config, depth);
                     collect_block_backgrounds(
                         state,
@@ -1450,8 +1426,8 @@ fn collect_block_backgrounds(
                     state.pop_else_return_pending();
                 }
 
-                // ブロック下端 = 現在のY位置 + フッターパディング
-                // （メッセージがブロック外にはみ出ないように）
+                // Block bottom = current Y + footer padding
+                // (prevent messages from overflowing block)
                 let end_y = state.current_y + block_footer_padding(&state.config, depth);
                 let frame_end_y = end_y - frame_shift;
                 state.current_y = end_y + state.config.row_height;
@@ -1886,26 +1862,14 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                 } => {
                     if let Some(pending) = else_pending.last_mut() {
                         if *pending && matches!(arrow.line, LineStyle::Dashed) {
-                            height += ELSE_RETURN_GAP;
                             *pending = false;
                         }
                     }
-                    let chain_gap = if *activate && depth == 0 && *active_activation_count == 1 {
-                        ACTIVATION_CHAIN_GAP
-                    } else {
-                        0.0
-                    };
                     let is_self = from == to;
                     let lines = text.split("\\n").count();
                     let delay_offset = arrow.delay.map(|d| d as f64 * DELAY_UNIT).unwrap_or(0.0);
                     if is_self {
-                        let mut spacing = self_message_spacing(config, lines);
-                        if !serial_pending.is_empty() {
-                            spacing -= SERIAL_SELF_MESSAGE_ADJUST;
-                        }
-                        if *active_activation_count > 0 {
-                            spacing -= SELF_MESSAGE_ACTIVE_ADJUST;
-                        }
+                        let spacing = self_message_spacing(config, lines);
                         height += spacing;
                     } else {
                         let spacing_line_height = message_spacing_line_height(config);
@@ -1922,10 +1886,6 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                             *pending = false;
                         }
                     }
-                    if *activate && depth == 0 {
-                        height += ACTIVATION_START_GAP;
-                    }
-                    height += chain_gap;
                     if *activate {
                         *active_activation_count += 1;
                     }
@@ -1937,14 +1897,14 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                     let lines = text.split("\\n").count();
                     let note_height =
                         note_padding(config) * 2.0 + lines as f64 * note_line_height(config);
-                    // ROW_SPACING を使用（render_note と統一）
+                    // Use ROW_SPACING (consistent with render_note)
                     height += note_height.max(config.row_height) + ROW_SPACING;
                 }
                 Item::State { text, .. } => {
                     let lines = text.split("\\n").count();
                     let box_height =
                         config.note_padding * 2.0 + lines as f64 * state_line_height(config);
-                    height += box_height + item_pre_gap(config) + STATE_EXTRA_GAP;
+                    height += box_height + item_pre_gap(config);
                 }
                 Item::Ref { text, .. } => {
                     let lines = text.split("\\n").count();
@@ -2051,7 +2011,7 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                         );
                         if let Some(else_items) = else_items {
                             else_pending.push(true);
-                            // else線の前後にパディング
+                            // Padding before and after else line
                             height += block_else_before(config, depth) + block_else_after(config, depth);
                             height += inner(
                                 else_items,
@@ -2064,7 +2024,7 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                             );
                             else_pending.pop();
                         }
-                        // ブロック下端とその後の余白
+                        // Block bottom and trailing margin
                         height += block_footer_padding(config, depth) + config.row_height;
                     }
                 }
@@ -2439,19 +2399,13 @@ fn render_message(
     activate: bool,
     deactivate: bool,
     create: bool,
-    depth: usize,
+    _depth: usize,
 ) {
     // Get base lifeline positions (used for text centering and direction calculation)
     let base_x1 = state.get_x(from);
     let base_x2 = state.get_x(to);
 
     state.apply_else_return_gap(arrow);
-    let active_count = state.active_activation_count();
-    let chain_gap = if activate && depth == 0 && active_count == 1 {
-        ACTIVATION_CHAIN_GAP
-    } else {
-        0.0
-    };
 
     let is_self = from == to;
     let line_class = match arrow.line {
@@ -2572,13 +2526,7 @@ fn render_message(
         // Close message group
         writeln!(svg, r#"</g>"#).unwrap();
 
-        let mut spacing = self_message_spacing(&state.config, lines.len());
-        if state.in_serial_block() {
-            spacing -= SERIAL_SELF_MESSAGE_ADJUST;
-        }
-        if active_count > 0 {
-            spacing -= SELF_MESSAGE_ACTIVE_ADJUST;
-        }
+        let spacing = self_message_spacing(&state.config, lines.len());
         state.current_y += spacing;
     } else {
         // Regular message - check for delay
@@ -2695,13 +2643,6 @@ fn render_message(
 
     state.apply_serial_first_row_gap();
 
-    if activate && depth == 0 {
-        state.current_y += ACTIVATION_START_GAP;
-    }
-    if chain_gap > 0.0 {
-        state.current_y += chain_gap;
-    }
-
     // Handle activation
     if activate {
         state
@@ -2731,7 +2672,7 @@ fn render_note(
     let lines: Vec<&str> = text.split("\\n").collect();
     let line_height = note_line_height(&state.config);
 
-    // ノートサイズ計算（4隅同じパディング）
+    // Calculate note size (same padding on all sides)
     let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(5);
     let text_width = max_line_len as f64 * NOTE_CHAR_WIDTH;
     let content_width = (NOTE_PADDING * 2.0 + text_width).max(NOTE_MIN_WIDTH);
@@ -2740,23 +2681,23 @@ fn render_note(
     let (x, note_width, text_anchor) = match position {
         NotePosition::Left => {
             let px = state.get_x(&participants[0]);
-            // ノート右端 = px - NOTE_MARGIN
+            // Note right edge = px - NOTE_MARGIN
             let x = (px - NOTE_MARGIN - content_width).max(state.config.padding);
             (x, content_width, "start")
         }
         NotePosition::Right => {
             let px = state.get_x(&participants[0]);
-            // ノート左端 = px + NOTE_MARGIN
+            // Note left edge = px + NOTE_MARGIN
             (px + NOTE_MARGIN, content_width, "start")
         }
         NotePosition::Over => {
             if participants.len() == 1 {
                 let px = state.get_x(&participants[0]);
-                // ライフライン中心に配置
+                // Center on lifeline
                 let x = (px - content_width / 2.0).max(state.config.padding);
                 (x, content_width, "middle")
             } else {
-                // 複数参加者にまたがる
+                // Span multiple participants
                 let x1 = state.get_x(&participants[0]);
                 let x2 = state.get_x(participants.last().unwrap());
                 let span_width = (x2 - x1).abs() + NOTE_MARGIN * 2.0;
@@ -2803,7 +2744,7 @@ fn render_note(
     )
     .unwrap();
 
-    // テキスト位置（4隅同じパディング使用）
+    // Text position (same padding on all sides)
     let text_x = match text_anchor {
         "middle" => x + note_width / 2.0,
         _ => x + NOTE_PADDING,
@@ -2823,7 +2764,7 @@ fn render_note(
         .unwrap();
     }
 
-    // 要素間余白を追加
+    // Add spacing between elements
     state.current_y += note_height.max(state.config.row_height) + ROW_SPACING;
 }
 
@@ -3057,7 +2998,7 @@ fn render_ref(
         }
     }
 
-    state.current_y = y + box_height + state.config.row_height + STATE_EXTRA_GAP;
+    state.current_y = y + box_height + state.config.row_height;
 }
 
 /// Render a description (extended text explanation)
@@ -3148,16 +3089,16 @@ fn render_block(
     // Render else items if present
     if let Some(else_items) = else_items {
         state.push_else_return_pending();
-        // else線の前にパディング（collect_block_backgroundsと同じ）
+        // Padding before else line (same as collect_block_backgrounds)
         state.current_y += block_else_before(&state.config, depth);
-        // else線の後にパディング
+        // Padding after else line
         state.current_y += block_else_after(&state.config, depth);
         render_items(svg, state, else_items, depth + 1);
         state.pop_else_return_pending();
     }
 
-    // ブロック下端 = 現在のY位置 + フッターパディング
-    // （メッセージがブロック外にはみ出ないように）
+    // Block bottom = current Y + footer padding
+    // (ensures messages don't overflow outside the block)
     let end_y = state.current_y + block_footer_padding(&state.config, depth);
 
     // Set current_y to end of block + margin
