@@ -42,6 +42,9 @@ pub mod parser;
 pub mod renderer;
 pub mod theme;
 
+/// Library version (from Cargo.toml at build time)
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub use ast::*;
 pub use parser::{parse, ParseError};
 pub use renderer::{render, render_with_config, Config};
