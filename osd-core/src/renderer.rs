@@ -135,14 +135,19 @@ const MESSAGE_WIDTH_PADDING: f64 = 4.0;
 const MESSAGE_WIDTH_SCALE: f64 = 0.82;
 
 // ============================================
+// Group Spacing (unified element spacing)
+// ============================================
+// All element spacing is controlled by this single function.
+// "Group" = visual unit (text + arrow/loop/box)
+// Spacing = gap between visual bottom of one group and visual top of next group
+fn group_spacing(config: &Config) -> f64 {
+    config.row_height  // 32px by default
+}
+
+// ============================================
 // Message
 // ============================================
 const MESSAGE_TEXT_ABOVE_ARROW: f64 = 6.0;       // Text is rendered 6px above arrow
-const SELF_MESSAGE_MIN_SPACING: f64 = 54.0;      // Minimum spacing for self-message
-const SELF_MESSAGE_GAP: f64 = 22.0;              // Gap after self-message (must be > TEXT_ABOVE_ARROW + font_ascent)
-const SELF_MESSAGE_PRE_GAP_REDUCTION: f64 = 9.0; // Gap reduction before self-message
-const CREATE_MESSAGE_SPACING: f64 = 28.0;        // Extra spacing for create message
-const DESTROY_SPACING: f64 = 11.0;               // Extra spacing for destroy
 const DELAY_UNIT: f64 = 18.0;                    // Pixels per delay unit
 const MESSAGE_MULTILINE_HEIGHT_MULT: f64 = 0.375; // Line height multiplier for multiline messages
 
@@ -150,16 +155,11 @@ const MESSAGE_MULTILINE_HEIGHT_MULT: f64 = 0.375; // Line height multiplier for 
 // Block (alt, opt, loop, etc.)
 // ============================================
 const BLOCK_LABEL_HEIGHT: f64 = 22.0;            // Pentagon label height
-const BLOCK_TITLE_PADDING: f64 = 12.0;           // Visual padding: label to first message
-const BLOCK_FOOTER_PADDING: f64 = 8.0;           // Padding: last message to block bottom
-const BLOCK_ELSE_BEFORE: f64 = 8.0;              // Padding before else line
-const BLOCK_ELSE_AFTER: f64 = 32.0;              // Padding after else line
-const BLOCK_GAP: f64 = 14.0;                     // Gap between blocks
+const ELEMENT_PADDING: f64 = 8.0;                // Unified internal padding for all elements
 
 // ============================================
 // Note
 // ============================================
-const NOTE_PADDING: f64 = 8.0;                   // Inner padding (same on all sides)
 const NOTE_MARGIN: f64 = 10.0;                   // Margin between note and lifeline
 const NOTE_FOLD_SIZE: f64 = 8.0;                 // Corner fold size
 const NOTE_CHAR_WIDTH: f64 = 7.0;                // Estimated character width
@@ -169,10 +169,8 @@ const NOTE_MIN_WIDTH: f64 = 50.0;                // Minimum width
 // ============================================
 // Other elements
 // ============================================
-const ROW_SPACING: f64 = 20.0;                   // Base spacing between elements
 const STATE_LINE_HEIGHT_EXTRA: f64 = 11.0;       // Extra line height for state
 const REF_LINE_HEIGHT_EXTRA: f64 = 16.0;         // Extra line height for ref
-const REF_EXTRA_GAP: f64 = 3.0;                  // Extra gap after ref
 
 // ============================================
 // Message label collision avoidance
@@ -182,28 +180,25 @@ const MESSAGE_LABEL_COLLISION_STEP_RATIO: f64 = 0.9;
 const MESSAGE_LABEL_ASCENT_FACTOR: f64 = 0.8;
 const MESSAGE_LABEL_DESCENT_FACTOR: f64 = 0.2;
 
-fn block_header_space(_config: &Config, _depth: usize) -> f64 {
-    // Pentagon height + visual padding + text offset absorption
-    // This makes BLOCK_TITLE_PADDING equal to the visual gap
-    BLOCK_LABEL_HEIGHT + BLOCK_TITLE_PADDING + MESSAGE_TEXT_ABOVE_ARROW
+fn block_header_space(config: &Config, _depth: usize) -> f64 {
+    // Pentagon height + group spacing + text offset absorption
+    BLOCK_LABEL_HEIGHT + group_spacing(config) + MESSAGE_TEXT_ABOVE_ARROW
 }
 
 fn block_frame_shift(_depth: usize) -> f64 {
-    // Simplified: no shift regardless of depth
     0.0
 }
 
 fn block_footer_padding(_config: &Config, _depth: usize) -> f64 {
-    // Simplified: unified value regardless of depth
-    BLOCK_FOOTER_PADDING
+    ELEMENT_PADDING
 }
 
 fn block_else_before(_config: &Config, _depth: usize) -> f64 {
-    BLOCK_ELSE_BEFORE
+    ELEMENT_PADDING
 }
 
-fn block_else_after(_config: &Config, _depth: usize) -> f64 {
-    BLOCK_ELSE_AFTER
+fn block_else_after(config: &Config, _depth: usize) -> f64 {
+    config.row_height
 }
 
 fn message_spacing_line_height(config: &Config) -> f64 {
@@ -213,15 +208,11 @@ fn message_spacing_line_height(config: &Config) -> f64 {
 fn self_message_spacing(config: &Config, lines: usize) -> f64 {
     let line_height = config.font_size + 4.0;
     let text_block_height = lines as f64 * line_height;
-    // WSD: loop height equals text block height, no extra padding
     let loop_height = text_block_height.max(25.0);
-    // WSD: gap after loop = 14px (pre-gap reduction is applied separately before self-message)
-    let base = loop_height + SELF_MESSAGE_GAP;
-    if lines >= 3 {
-        base.max(SELF_MESSAGE_MIN_SPACING)
-    } else {
-        base
-    }
+    // Group height (loop) + group spacing + next message text offset
+    // Next message text is rendered MESSAGE_TEXT_ABOVE_ARROW above arrow,
+    // so we add that offset to maintain consistent visual spacing
+    loop_height + group_spacing(config) + MESSAGE_TEXT_ABOVE_ARROW
 }
 
 fn note_line_height(_config: &Config) -> f64 {
@@ -230,7 +221,7 @@ fn note_line_height(_config: &Config) -> f64 {
 }
 
 fn note_padding(_config: &Config) -> f64 {
-    NOTE_PADDING
+    ELEMENT_PADDING
 }
 
 fn item_pre_gap(config: &Config) -> f64 {
@@ -281,7 +272,9 @@ fn regular_message_y_advance(config: &Config, line_count: usize, delay_offset: f
     } else {
         0.0
     };
-    config.row_height + extra_height + delay_offset
+    // Group spacing + multiline extra + delay
+    // For regular messages, text is above arrow on both sides, so offsets cancel out
+    group_spacing(config) + extra_height + delay_offset
 }
 
 /// Calculate Y advancement for a self-message
@@ -292,30 +285,34 @@ fn self_message_y_advance(config: &Config, line_count: usize) -> f64 {
 /// Calculate Y advancement for a note
 fn note_y_advance(config: &Config, line_count: usize) -> f64 {
     let note_height = note_padding(config) * 2.0 + line_count as f64 * note_line_height(config);
-    note_height.max(config.row_height) + ROW_SPACING
+    // Group height (note box) + group spacing + next message text offset
+    note_height.max(group_spacing(config)) + group_spacing(config) + MESSAGE_TEXT_ABOVE_ARROW
 }
 
 /// Calculate Y advancement for a state box
 fn state_y_advance(config: &Config, line_count: usize) -> f64 {
-    let box_height = config.note_padding * 2.0 + line_count as f64 * state_line_height(config);
-    box_height + item_pre_gap(config)
+    let box_height = ELEMENT_PADDING * 2.0 + line_count as f64 * state_line_height(config);
+    // Group height (state box) + group spacing + next message text offset
+    box_height + group_spacing(config) + MESSAGE_TEXT_ABOVE_ARROW
 }
 
 /// Calculate Y advancement for a ref box
 fn ref_y_advance(config: &Config, line_count: usize) -> f64 {
-    let box_height = config.note_padding * 2.0 + line_count as f64 * ref_line_height(config);
-    box_height + item_pre_gap(config) + REF_EXTRA_GAP
+    let box_height = ELEMENT_PADDING * 2.0 + line_count as f64 * ref_line_height(config);
+    // Group height (ref box) + group spacing + next message text offset
+    box_height + group_spacing(config) + MESSAGE_TEXT_ABOVE_ARROW
 }
 
 /// Calculate Y advancement for a description
 fn description_y_advance(config: &Config, line_count: usize) -> f64 {
     let line_height = config.font_size + 4.0;
-    line_count as f64 * line_height + 10.0
+    // Group height (text block) + group spacing + next message text offset
+    line_count as f64 * line_height + group_spacing(config) + MESSAGE_TEXT_ABOVE_ARROW
 }
 
 /// Calculate Y advancement for a block end (footer + row margin)
 fn block_end_y_advance(config: &Config, depth: usize) -> f64 {
-    block_footer_padding(config, depth) + config.row_height
+    block_footer_padding(config, depth) + group_spacing(config)
 }
 
 /// Arrowhead size constant
@@ -450,7 +447,7 @@ fn calculate_note_width(text: &str, _config: &Config) -> f64 {
     let lines: Vec<&str> = text.split("\\n").collect();
     let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(5);
     let text_width = max_line_len as f64 * NOTE_CHAR_WIDTH;
-    (NOTE_PADDING * 2.0 + text_width).max(NOTE_MIN_WIDTH)
+    (ELEMENT_PADDING * 2.0 + text_width).max(NOTE_MIN_WIDTH)
 }
 
 /// Calculate required right margin based on right-side notes on the rightmost participant only
@@ -1318,14 +1315,13 @@ fn collect_block_backgrounds(
                 let delay_offset = arrow.delay.map(|d| d as f64 * DELAY_UNIT).unwrap_or(0.0);
 
                 if is_self {
-                    state.current_y -= SELF_MESSAGE_PRE_GAP_REDUCTION;
                     state.current_y += self_message_y_advance(&state.config, line_count);
                 } else {
                     state.current_y += regular_message_y_advance(&state.config, line_count, delay_offset);
                 }
 
                 if *create {
-                    state.current_y += CREATE_MESSAGE_SPACING;
+                    state.current_y += state.config.row_height;
                 }
 
                 state.apply_serial_first_row_gap();
@@ -1353,7 +1349,7 @@ fn collect_block_backgrounds(
                 state.current_y += description_y_advance(&state.config, line_count);
             }
             Item::Destroy { .. } => {
-                state.current_y += DESTROY_SPACING;
+                state.current_y += state.config.row_height;
             }
             Item::Activate { .. } => {
                 *active_activation_count += 1;
@@ -1389,7 +1385,7 @@ fn collect_block_backgrounds(
                     }
                     *active_activation_count = start_activation_count;
                     let gap = if parallel_needs_gap(items) {
-                        BLOCK_GAP
+                        state.config.row_height
                     } else {
                         0.0
                     };
@@ -1911,7 +1907,7 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                         height += regular_message_y_advance(config, line_count, delay_offset);
                     }
                     if *create {
-                        height += CREATE_MESSAGE_SPACING;
+                        height += config.row_height;
                     }
                     if let Some(pending) = serial_pending.last_mut() {
                         if *pending {
@@ -1972,7 +1968,7 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                             *parallel_depth -= 1;
                         }
                         let gap = if parallel_needs_gap(items) {
-                            BLOCK_GAP
+                            config.row_height
                         } else {
                             0.0
                         };
@@ -2063,7 +2059,7 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                     }
                 }
                 Item::Destroy { .. } => {
-                    height += DESTROY_SPACING;
+                    height += config.row_height;
                 }
                 Item::ParticipantDecl { .. } => {}
                 Item::Autonumber { .. } => {}
@@ -2371,7 +2367,7 @@ fn render_items(svg: &mut String, state: &mut RenderState, items: &[Item], depth
                     stroke = theme.message_color
                 )
                 .unwrap();
-                state.current_y += DESTROY_SPACING;
+                state.current_y += state.config.row_height;
             }
             Item::Autonumber { enabled, start } => {
                 if *enabled {
@@ -2460,11 +2456,6 @@ fn render_message(
     // Add space BEFORE the message for multiline text (text is rendered above arrow)
     if !is_self && lines.len() > 1 {
         state.current_y += extra_height;
-    }
-
-    // WSD: self-messages have a reduced pre-gap
-    if is_self {
-        state.current_y -= SELF_MESSAGE_PRE_GAP_REDUCTION;
     }
 
     let y = state.current_y;
@@ -2650,7 +2641,7 @@ fn render_message(
     }
 
     if create {
-        state.current_y += CREATE_MESSAGE_SPACING;
+        state.current_y += state.config.row_height;
     }
 
     state.apply_serial_first_row_gap();
@@ -2687,8 +2678,8 @@ fn render_note(
     // Calculate note size (same padding on all sides)
     let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(5);
     let text_width = max_line_len as f64 * NOTE_CHAR_WIDTH;
-    let content_width = (NOTE_PADDING * 2.0 + text_width).max(NOTE_MIN_WIDTH);
-    let note_height = NOTE_PADDING * 2.0 + lines.len() as f64 * line_height;
+    let content_width = (ELEMENT_PADDING * 2.0 + text_width).max(NOTE_MIN_WIDTH);
+    let note_height = ELEMENT_PADDING * 2.0 + lines.len() as f64 * line_height;
 
     let (x, note_width, text_anchor) = match position {
         NotePosition::Left => {
@@ -2759,12 +2750,12 @@ fn render_note(
     // Text position (same padding on all sides)
     let text_x = match text_anchor {
         "middle" => x + note_width / 2.0,
-        _ => x + NOTE_PADDING,
+        _ => x + ELEMENT_PADDING,
     };
     let text_anchor_attr = if *position == NotePosition::Over { "middle" } else { "start" };
 
     for (i, line) in lines.iter().enumerate() {
-        let text_y = y + NOTE_PADDING + (i as f64 + 0.8) * line_height;
+        let text_y = y + ELEMENT_PADDING + (i as f64 + 0.8) * line_height;
         writeln!(
             svg,
             r#"<text x="{x}" y="{y}" class="note-text" text-anchor="{anchor}">{t}</text>"#,
@@ -2834,7 +2825,7 @@ fn render_state(svg: &mut String, state: &mut RenderState, participants: &[Strin
         .unwrap();
     }
 
-    state.current_y = y + box_height + state.config.row_height + REF_EXTRA_GAP;
+    state.current_y = y + box_height + state.config.row_height;
 }
 
 /// Render a ref box (hexagon-like shape)
@@ -3062,7 +3053,7 @@ fn render_block(
             }
         }
         let gap = if parallel_needs_gap(items) {
-            BLOCK_GAP
+            state.config.row_height
         } else {
             0.0
         };
