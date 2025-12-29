@@ -267,6 +267,57 @@ fn ref_line_height(config: &Config) -> f64 {
     config.font_size + REF_LINE_HEIGHT_EXTRA
 }
 
+// ============================================
+// Common Y advancement functions
+// These are the single source of truth for Y position calculations.
+// Used by: collect_block_backgrounds, calculate_height, render_*
+// ============================================
+
+/// Calculate Y advancement for a regular (non-self) message
+fn regular_message_y_advance(config: &Config, line_count: usize, delay_offset: f64) -> f64 {
+    let spacing_line_height = message_spacing_line_height(config);
+    let extra_height = if line_count > 1 {
+        (line_count - 1) as f64 * spacing_line_height
+    } else {
+        0.0
+    };
+    config.row_height + extra_height + delay_offset
+}
+
+/// Calculate Y advancement for a self-message
+fn self_message_y_advance(config: &Config, line_count: usize) -> f64 {
+    self_message_spacing(config, line_count)
+}
+
+/// Calculate Y advancement for a note
+fn note_y_advance(config: &Config, line_count: usize) -> f64 {
+    let note_height = note_padding(config) * 2.0 + line_count as f64 * note_line_height(config);
+    note_height.max(config.row_height) + ROW_SPACING
+}
+
+/// Calculate Y advancement for a state box
+fn state_y_advance(config: &Config, line_count: usize) -> f64 {
+    let box_height = config.note_padding * 2.0 + line_count as f64 * state_line_height(config);
+    box_height + item_pre_gap(config)
+}
+
+/// Calculate Y advancement for a ref box
+fn ref_y_advance(config: &Config, line_count: usize) -> f64 {
+    let box_height = config.note_padding * 2.0 + line_count as f64 * ref_line_height(config);
+    box_height + item_pre_gap(config) + REF_EXTRA_GAP
+}
+
+/// Calculate Y advancement for a description
+fn description_y_advance(config: &Config, line_count: usize) -> f64 {
+    let line_height = config.font_size + 4.0;
+    line_count as f64 * line_height + 10.0
+}
+
+/// Calculate Y advancement for a block end (footer + row margin)
+fn block_end_y_advance(config: &Config, depth: usize) -> f64 {
+    block_footer_padding(config, depth) + config.row_height
+}
+
 /// Arrowhead size constant
 const ARROWHEAD_SIZE: f64 = 10.0;
 
@@ -1255,26 +1306,14 @@ fn collect_block_backgrounds(
             } => {
                 state.apply_else_return_gap(arrow);
                 let is_self = from == to;
-                let lines: Vec<&str> = text.split("\\n").collect();
+                let line_count = text.split("\\n").count();
                 let delay_offset = arrow.delay.map(|d| d as f64 * DELAY_UNIT).unwrap_or(0.0);
 
                 if is_self {
-                    // Self message: reduce pre-gap then add spacing
                     state.current_y -= SELF_MESSAGE_PRE_GAP_REDUCTION;
-                    let spacing = self_message_spacing(&state.config, lines.len());
-                    state.current_y += spacing;
+                    state.current_y += self_message_y_advance(&state.config, line_count);
                 } else {
-                    // Regular message
-                    let spacing_line_height = message_spacing_line_height(&state.config);
-                    let extra_height = if lines.len() > 1 {
-                        (lines.len() - 1) as f64 * spacing_line_height
-                    } else {
-                        0.0
-                    };
-                    if lines.len() > 1 {
-                        state.current_y += extra_height;
-                    }
-                    state.current_y += state.config.row_height + delay_offset;
+                    state.current_y += regular_message_y_advance(&state.config, line_count, delay_offset);
                 }
 
                 if *create {
@@ -1290,29 +1329,20 @@ fn collect_block_backgrounds(
                 }
             }
             Item::Note { text, .. } => {
-                let lines: Vec<&str> = text.split("\\n").collect();
-                let line_height = note_line_height(&state.config);
-                let note_height =
-                    note_padding(&state.config) * 2.0 + lines.len() as f64 * line_height;
-                // Use ROW_SPACING (consistent with render_note)
-                state.current_y += note_height.max(state.config.row_height) + ROW_SPACING;
+                let line_count = text.split("\\n").count();
+                state.current_y += note_y_advance(&state.config, line_count);
             }
             Item::State { text, .. } => {
-                let lines: Vec<&str> = text.split("\\n").collect();
-                let line_height = state_line_height(&state.config);
-                let box_height = state.config.note_padding * 2.0 + lines.len() as f64 * line_height;
-                state.current_y += box_height + item_pre_gap(&state.config);
+                let line_count = text.split("\\n").count();
+                state.current_y += state_y_advance(&state.config, line_count);
             }
             Item::Ref { text, .. } => {
-                let lines: Vec<&str> = text.split("\\n").collect();
-                let line_height = ref_line_height(&state.config);
-                let box_height = state.config.note_padding * 2.0 + lines.len() as f64 * line_height;
-                state.current_y += box_height + item_pre_gap(&state.config) + REF_EXTRA_GAP;
+                let line_count = text.split("\\n").count();
+                state.current_y += ref_y_advance(&state.config, line_count);
             }
             Item::Description { text } => {
-                let lines: Vec<&str> = text.split("\\n").collect();
-                let line_height = state.config.font_size + 4.0;
-                state.current_y += lines.len() as f64 * line_height + 10.0;
+                let line_count = text.split("\\n").count();
+                state.current_y += description_y_advance(&state.config, line_count);
             }
             Item::Destroy { .. } => {
                 state.current_y += DESTROY_SPACING;
@@ -1847,7 +1877,6 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
         parallel_depth: &mut usize,
     ) -> f64 {
         let mut height = 0.0;
-        let line_height = config.font_size + 4.0;
         for item in items {
             match item {
                 Item::Message {
@@ -1866,16 +1895,12 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                         }
                     }
                     let is_self = from == to;
-                    let lines = text.split("\\n").count();
+                    let line_count = text.split("\\n").count();
                     let delay_offset = arrow.delay.map(|d| d as f64 * DELAY_UNIT).unwrap_or(0.0);
                     if is_self {
-                        let spacing = self_message_spacing(config, lines);
-                        height += spacing;
+                        height += self_message_y_advance(config, line_count);
                     } else {
-                        let spacing_line_height = message_spacing_line_height(config);
-                        height += config.row_height
-                            + (lines.saturating_sub(1)) as f64 * spacing_line_height
-                            + delay_offset;
+                        height += regular_message_y_advance(config, line_count, delay_offset);
                     }
                     if *create {
                         height += CREATE_MESSAGE_SPACING;
@@ -1894,27 +1919,20 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                     }
                 }
                 Item::Note { text, .. } => {
-                    let lines = text.split("\\n").count();
-                    let note_height =
-                        note_padding(config) * 2.0 + lines as f64 * note_line_height(config);
-                    // Use ROW_SPACING (consistent with render_note)
-                    height += note_height.max(config.row_height) + ROW_SPACING;
+                    let line_count = text.split("\\n").count();
+                    height += note_y_advance(config, line_count);
                 }
                 Item::State { text, .. } => {
-                    let lines = text.split("\\n").count();
-                    let box_height =
-                        config.note_padding * 2.0 + lines as f64 * state_line_height(config);
-                    height += box_height + item_pre_gap(config);
+                    let line_count = text.split("\\n").count();
+                    height += state_y_advance(config, line_count);
                 }
                 Item::Ref { text, .. } => {
-                    let lines = text.split("\\n").count();
-                    let box_height =
-                        config.note_padding * 2.0 + lines as f64 * ref_line_height(config);
-                    height += box_height + item_pre_gap(config) + REF_EXTRA_GAP;
+                    let line_count = text.split("\\n").count();
+                    height += ref_y_advance(config, line_count);
                 }
                 Item::Description { text } => {
-                    let lines = text.split("\\n").count();
-                    height += lines as f64 * line_height + 10.0;
+                    let line_count = text.split("\\n").count();
+                    height += description_y_advance(config, line_count);
                 }
                 Item::Block {
                     kind,
@@ -2025,7 +2043,7 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
                             else_pending.pop();
                         }
                         // Block bottom and trailing margin
-                        height += block_footer_padding(config, depth) + config.row_height;
+                        height += block_end_y_advance(config, depth);
                     }
                 }
                 Item::Activate { .. } => {
@@ -2765,7 +2783,7 @@ fn render_note(
     }
 
     // Add spacing between elements
-    state.current_y += note_height.max(state.config.row_height) + ROW_SPACING;
+    state.current_y += note_y_advance(&state.config, lines.len());
 }
 
 /// Render a state box (rounded rectangle)
@@ -3026,7 +3044,7 @@ fn render_description(svg: &mut String, state: &mut RenderState, text: &str) {
         .unwrap();
     }
 
-    state.current_y += lines.len() as f64 * line_height + 10.0;
+    state.current_y += description_y_advance(&state.config, lines.len());
 }
 
 fn render_block(
