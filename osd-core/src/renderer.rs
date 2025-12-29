@@ -927,10 +927,18 @@ impl RenderState {
         mut y_max: f64,
         step: f64,
     ) -> f64 {
+        // Only check collision with boxes that could actually overlap
+        // Skip boxes whose y_max is significantly above our y_min (they're in previous rows)
+        let relevance_threshold = step * 2.0;
+        let relevant_boxes: Vec<&LabelBox> = self
+            .message_label_boxes
+            .iter()
+            .filter(|b| b.y_max + relevance_threshold >= y_min)
+            .collect();
+
         let mut offset = 0.0;
         let mut attempts = 0;
-        while self
-            .message_label_boxes
+        while relevant_boxes
             .iter()
             .any(|b| label_boxes_overlap(x_min, x_max, y_min, y_max, b))
             && attempts < 20
@@ -2512,25 +2520,11 @@ fn render_message(
         }
 
         // Text - multiline support
+        // Self-messages don't need collision detection - they're positioned to the right
+        // of the loop and won't collide with regular centered messages
         let text_x = x1 + loop_width + 5.0;
-        let max_width = lines
-            .iter()
-            .map(|line| estimate_message_width(line, state.config.font_size))
-            .fold(0.0, f64::max);
-        let top_line_y = y + 4.0 + 0.5 * line_height;
-        let bottom_line_y = y + 4.0 + (lines.len() as f64 - 0.5) * line_height;
-        let label_y_min = top_line_y - line_height * MESSAGE_LABEL_ASCENT_FACTOR;
-        let label_y_max = bottom_line_y + line_height * MESSAGE_LABEL_DESCENT_FACTOR;
-        let label_x_min = text_x;
-        let label_x_max = text_x + max_width;
-        let label_offset = if has_label_text {
-            let step = line_height * MESSAGE_LABEL_COLLISION_STEP_RATIO;
-            state.reserve_message_label(label_x_min, label_x_max, label_y_min, label_y_max, step)
-        } else {
-            0.0
-        };
         for (i, line) in lines.iter().enumerate() {
-            let line_y = y + 4.0 + (i as f64 + 0.5) * line_height + label_offset;
+            let line_y = y + 4.0 + (i as f64 + 0.5) * line_height;
             writeln!(
                 svg,
                 r#"  <text x="{x}" y="{y}" class="message-text">{t}</text>"#,
