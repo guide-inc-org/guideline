@@ -139,7 +139,7 @@ const MESSAGE_WIDTH_SCALE: f64 = 0.82;
 // ============================================
 const MESSAGE_TEXT_ABOVE_ARROW: f64 = 6.0;       // Text is rendered 6px above arrow
 const SELF_MESSAGE_MIN_SPACING: f64 = 54.0;      // Minimum spacing for self-message
-const SELF_MESSAGE_GAP: f64 = 14.0;              // Gap after self-message
+const SELF_MESSAGE_GAP: f64 = 22.0;              // Gap after self-message (must be > TEXT_ABOVE_ARROW + font_ascent)
 const SELF_MESSAGE_PRE_GAP_REDUCTION: f64 = 9.0; // Gap reduction before self-message
 const CREATE_MESSAGE_SPACING: f64 = 28.0;        // Extra spacing for create message
 const DESTROY_SPACING: f64 = 11.0;               // Extra spacing for destroy
