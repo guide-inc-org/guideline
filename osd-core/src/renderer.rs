@@ -1234,14 +1234,18 @@ fn find_involved_participants(items: &[Item], state: &RenderState) -> Option<(f6
     }
 }
 
+/// Padding for nested blocks inside parent
+const NESTED_BLOCK_INSET: f64 = 5.0;
+
 /// Calculate block x boundaries based on involved participants and label length
 fn calculate_block_bounds_with_label(
     items: &[Item],
     else_sections: &[crate::ast::ElseSection],
     label: &str,
     kind: &str,
-    depth: usize,
+    _depth: usize,
     state: &RenderState,
+    parent_bounds: Option<(f64, f64)>,
 ) -> (f64, f64) {
     let mut all_items: Vec<&Item> = items.iter().collect();
     for section in else_sections {
@@ -1251,15 +1255,25 @@ fn calculate_block_bounds_with_label(
     // Convert Vec<&Item> to slice for find_involved_participants
     let items_slice: Vec<Item> = all_items.into_iter().cloned().collect();
 
+    // If we have parent bounds, apply nested inset as constraint
+    let (constraint_x1, constraint_x2) = if let Some((px1, px2)) = parent_bounds {
+        (px1 + NESTED_BLOCK_INSET, px2 - NESTED_BLOCK_INSET)
+    } else {
+        (state.block_left(), state.block_right())
+    };
+
     let (base_x1, base_x2) =
         if let Some((min_left, max_right, _includes_leftmost)) =
             find_involved_participants(&items_slice, state)
         {
             let margin = state.config.block_margin;
-            (min_left - margin, max_right + margin)
+            // Apply parent constraint: nested block must be within parent bounds
+            let x1 = (min_left - margin).max(constraint_x1);
+            let x2 = (max_right + margin).min(constraint_x2);
+            (x1, x2)
         } else {
-            // Fallback to full width if no participants found
-            (state.block_left(), state.block_right())
+            // Fallback to constrained width if no participants found
+            (constraint_x1, constraint_x2)
         };
 
     // Calculate minimum width needed for label
@@ -1294,28 +1308,26 @@ fn calculate_block_bounds_with_label(
     let max_label_content_width = condition_width.max(max_else_label_width);
     let min_label_width = pentagon_width + 8.0 + max_label_content_width + 20.0; // Extra right margin
 
-    // Ensure block is wide enough for the label
+    // Calculate available width within parent constraint
+    let available_width = constraint_x2 - constraint_x1;
+
+    // Ensure block is wide enough for the label, but don't exceed parent bounds
     let current_width = base_x2 - base_x1;
-    let (mut x1, mut x2) = if current_width < min_label_width {
-        // Extend the right side to accommodate the label
-        (base_x1, base_x1 + min_label_width)
+    let (x1, x2) = if current_width < min_label_width {
+        // Extend the right side to accommodate the label, but respect parent bounds
+        let desired_x2 = base_x1 + min_label_width;
+        if desired_x2 <= constraint_x2 {
+            (base_x1, desired_x2)
+        } else if min_label_width <= available_width {
+            // Shift left to fit within parent
+            (constraint_x2 - min_label_width, constraint_x2)
+        } else {
+            // Label is wider than available space, use full parent width
+            (constraint_x1, constraint_x2)
+        }
     } else {
         (base_x1, base_x2)
     };
-
-    // Inset nested blocks so they sit inside their parent with padding.
-    let nested_padding = depth as f64 * 20.0;
-    if nested_padding > 0.0 {
-        let available = x2 - x1;
-        let max_padding = ((available - min_label_width) / 2.0).max(0.0);
-        let inset = nested_padding.min(max_padding);
-        x1 += inset;
-        x2 -= inset;
-    }
-
-    // Even when including leftmost participant, keep moderate margin from participant box
-    // (don't extend to padding)
-    // Note: WSD places blocks close to participants
 
     (x1, x2)
 }
@@ -1326,6 +1338,7 @@ fn collect_block_backgrounds(
     items: &[Item],
     depth: usize,
     active_activation_count: &mut usize,
+    parent_bounds: Option<(f64, f64)>,
 ) {
     for item in items {
         match item {
@@ -1408,6 +1421,7 @@ fn collect_block_backgrounds(
                             std::slice::from_ref(item),
                             depth,
                             active_activation_count,
+                            parent_bounds,
                         );
                         if state.current_y > max_end_y {
                             max_end_y = state.current_y;
@@ -1426,13 +1440,14 @@ fn collect_block_backgrounds(
 
                 if matches!(kind, BlockKind::Serial) {
                     state.push_serial_first_row_pending();
-                    collect_block_backgrounds(state, items, depth, active_activation_count);
+                    collect_block_backgrounds(state, items, depth, active_activation_count, parent_bounds);
                     for section in else_sections {
                         collect_block_backgrounds(
                             state,
                             &section.items,
                             depth,
                             active_activation_count,
+                            parent_bounds,
                         );
                     }
                     state.pop_serial_first_row_pending();
@@ -1440,13 +1455,14 @@ fn collect_block_backgrounds(
                 }
 
                 if !block_has_frame(kind) {
-                    collect_block_backgrounds(state, items, depth, active_activation_count);
+                    collect_block_backgrounds(state, items, depth, active_activation_count, parent_bounds);
                     for section in else_sections {
                         collect_block_backgrounds(
                             state,
                             &section.items,
                             depth,
                             active_activation_count,
+                            parent_bounds,
                         );
                     }
                     continue;
@@ -1464,10 +1480,12 @@ fn collect_block_backgrounds(
                     kind.as_str(),
                     depth,
                     state,
+                    parent_bounds,
                 );
 
                 state.current_y += block_header_space(&state.config, depth);
-                collect_block_backgrounds(state, items, depth + 1, active_activation_count);
+                // Pass current block bounds as parent bounds to nested blocks
+                collect_block_backgrounds(state, items, depth + 1, active_activation_count, Some((x1, x2)));
 
                 // Process each else section
                 let mut else_section_info: Vec<(f64, Option<String>)> = Vec::new();
@@ -1480,11 +1498,13 @@ fn collect_block_backgrounds(
                     state.push_else_return_pending();
                     // Add padding after else line
                     state.current_y += block_else_after(&state.config, depth);
+                    // Pass current block bounds as parent bounds to nested blocks
                     collect_block_backgrounds(
                         state,
                         &section.items,
                         depth + 1,
                         active_activation_count,
+                        Some((x1, x2)),
                     );
                     state.pop_else_return_pending();
                 }
@@ -1683,7 +1703,7 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
     // Pre-calculate block backgrounds to determine max width (before SVG header)
     state.current_y = state.content_start();
     let mut active_activation_count = 0;
-    collect_block_backgrounds(&mut state, &diagram.items, 0, &mut active_activation_count);
+    collect_block_backgrounds(&mut state, &diagram.items, 0, &mut active_activation_count, None);
 
     let total_width = state.diagram_width();
 
