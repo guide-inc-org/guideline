@@ -162,7 +162,6 @@ const ELEMENT_PADDING: f64 = 8.0;                // Unified internal padding for
 // ============================================
 const NOTE_MARGIN: f64 = 10.0;                   // Margin between note and lifeline
 const NOTE_FOLD_SIZE: f64 = 8.0;                 // Corner fold size
-const NOTE_CHAR_WIDTH: f64 = 7.0;                // Estimated character width
 const NOTE_LINE_HEIGHT: f64 = 17.0;              // Line height (font 13px + 4px)
 const NOTE_MIN_WIDTH: f64 = 50.0;                // Minimum width
 
@@ -444,11 +443,11 @@ fn block_tab_width(kind: &str) -> f64 {
     (kind.chars().count() as f64 * 12.0 + 21.0).max(57.0)
 }
 
-/// Calculate note width based on text content
+/// Calculate note width based on text content (using note font size of 13px)
 fn calculate_note_width(text: &str, _config: &Config) -> f64 {
-    let lines: Vec<&str> = text.split("\\n").collect();
-    let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(5);
-    let text_width = max_line_len as f64 * NOTE_CHAR_WIDTH;
+    // Use NOTE_LINE_HEIGHT - 4.0 as the effective font size (13px)
+    let note_font_size = NOTE_LINE_HEIGHT - 4.0;
+    let text_width = estimate_text_width(text, note_font_size);
     (ELEMENT_PADDING * 2.0 + text_width).max(NOTE_MIN_WIDTH)
 }
 
@@ -2777,8 +2776,9 @@ fn render_note(
     let line_height = note_line_height(&state.config);
 
     // Calculate note size (same padding on all sides)
-    let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(5);
-    let text_width = max_line_len as f64 * NOTE_CHAR_WIDTH;
+    // Use estimate_text_width to properly handle CJK characters
+    let note_font_size = NOTE_LINE_HEIGHT - 4.0; // 13px
+    let text_width = estimate_text_width(text, note_font_size);
     let content_width = (ELEMENT_PADDING * 2.0 + text_width).max(NOTE_MIN_WIDTH);
     let note_height = ELEMENT_PADDING * 2.0 + lines.len() as f64 * line_height;
 
