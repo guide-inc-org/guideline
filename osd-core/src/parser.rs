@@ -421,6 +421,7 @@ fn parse_title(input: &str) -> IResult<&str, String> {
 }
 
 /// Parse participant declaration: `participant Name` or `actor Name` or `participant "Long Name" as L`
+/// Also supports unquoted names with spaces: `participant OSD Frontend`
 fn parse_participant_decl(input: &str) -> IResult<&str, Item> {
     let (input, kind) = alt((
         value(ParticipantKind::Participant, tag_no_case("participant")),
@@ -430,18 +431,35 @@ fn parse_participant_decl(input: &str) -> IResult<&str, Item> {
 
     let (input, _) = space1.parse(input)?;
 
-    // Parse name (possibly quoted)
-    let (input, name) = parse_name(input)?;
-
-    // Check for alias
-    let (input, alias) = opt(preceded(
-        (space1, tag_no_case("as"), space1),
-        parse_identifier,
-    ))
-    .parse(input)?;
+    // Parse name - check for quoted name first, then unquoted (possibly with spaces)
+    let (remaining, name, alias) = if input.starts_with('"') {
+        // Quoted name
+        let (input, name) = delimited(char('"'), take_until("\""), char('"')).parse(input)?;
+        // Check for alias
+        let (input, alias) = opt(preceded(
+            (space1, tag_no_case("as"), space1),
+            parse_identifier,
+        ))
+        .parse(input)?;
+        (input, name, alias)
+    } else {
+        // Unquoted name - take until " as " or end of line
+        // First check if there's an " as " in the remaining input
+        let lower_input = input.to_lowercase();
+        if let Some(as_pos) = lower_input.find(" as ") {
+            let name = input[..as_pos].trim();
+            let after_as = &input[as_pos + 4..]; // skip " as "
+            let (_, alias) = parse_identifier(after_as.trim_start())?;
+            ("", name, Some(alias))
+        } else {
+            // No alias, take the whole remaining line as name
+            let name = input.trim();
+            ("", name, None)
+        }
+    };
 
     Ok((
-        input,
+        remaining,
         Item::ParticipantDecl {
             name: name.to_string(),
             alias: alias.map(|s| s.to_string()),
@@ -471,14 +489,86 @@ fn parse_identifier(input: &str) -> IResult<&str, &str> {
 
 /// Parse a message: `A->B: text` or `A->>B: text` etc.
 /// Task 6: Now supports quoted names with colons
+/// Also supports unquoted names with spaces: `OSD Frontend->OSD Backend: text`
 fn parse_message(input: &str) -> IResult<&str, Item> {
-    let (input, from) = parse_name(input)?;
-    let (input, arrow) = parse_arrow(input)?;
-    let (input, modifiers) = parse_arrow_modifiers(input)?;
-    let (input, to) = parse_name(input)?;
-    let (input, _) = opt(char(':')).parse(input)?;
-    let (input, _) = space0.parse(input)?;
-    let text = input.trim().to_string();
+    // Arrow patterns to search for (ordered by length, longest first)
+    let arrow_patterns = [
+        ("<-->", Arrow::RESPONSE),
+        ("-->>", Arrow::RESPONSE_OPEN),
+        ("<->", Arrow::SYNC),
+        ("-->", Arrow::RESPONSE),
+        ("->>", Arrow::SYNC_OPEN),
+        ("->", Arrow::SYNC),
+    ];
+
+    // Find the arrow position and type
+    let mut arrow_pos: Option<(usize, usize, Arrow)> = None; // (start, end, arrow)
+
+    // Check for delayed arrow pattern first: ->(n)
+    if let Some(delay_start) = input.find("->(") {
+        if let Some(paren_end) = input[delay_start + 3..].find(')') {
+            let delay_str = &input[delay_start + 3..delay_start + 3 + paren_end];
+            if let Ok(delay_val) = delay_str.parse::<u32>() {
+                arrow_pos = Some((delay_start, delay_start + 4 + paren_end, Arrow {
+                    line: LineStyle::Solid,
+                    head: ArrowHead::Filled,
+                    delay: Some(delay_val),
+                }));
+            }
+        }
+    }
+
+    // If no delayed arrow, search for regular arrows
+    if arrow_pos.is_none() {
+        for (pattern, arrow) in &arrow_patterns {
+            if let Some(pos) = input.find(pattern) {
+                arrow_pos = Some((pos, pos + pattern.len(), *arrow));
+                break;
+            }
+        }
+    }
+
+    let (arrow_start, arrow_end, arrow) = arrow_pos.ok_or_else(|| {
+        nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag))
+    })?;
+
+    // Split: from is before arrow, rest is after arrow
+    let from = input[..arrow_start].trim();
+    let after_arrow = &input[arrow_end..];
+
+    // Parse modifiers (+, -, *) immediately after arrow
+    let (after_mods, modifiers) = parse_arrow_modifiers(after_arrow)?;
+
+    // Find colon to split to/text, but handle quoted names
+    let (to, text) = if after_mods.trim_start().starts_with('"') {
+        // Quoted "to" name
+        let trimmed = after_mods.trim_start();
+        if let Some(end_quote) = trimmed[1..].find('"') {
+            let to_name = &trimmed[1..end_quote + 1];
+            let rest = &trimmed[end_quote + 2..];
+            let text = rest.trim_start_matches(':').trim().to_string();
+            (to_name, text)
+        } else {
+            return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Tag)));
+        }
+    } else {
+        // Unquoted "to" name - take until colon or end of line
+        if let Some(colon_pos) = after_mods.find(':') {
+            let to_name = after_mods[..colon_pos].trim();
+            let text = after_mods[colon_pos + 1..].trim().to_string();
+            (to_name, text)
+        } else {
+            // No colon - entire remaining is "to" name
+            (after_mods.trim(), String::new())
+        }
+    };
+
+    // Handle quoted "from" name
+    let from = if from.starts_with('"') && from.ends_with('"') && from.len() > 2 {
+        &from[1..from.len() - 1]
+    } else {
+        from
+    };
 
     Ok((
         "",
@@ -1090,6 +1180,68 @@ end ref-->Alice: Output signal"#;
                 assert_eq!(text, "Hello");
             }
             _ => panic!("Expected Message"),
+        }
+    }
+
+    // Test: Participant names with spaces (WSD compatibility)
+    #[test]
+    fn test_participant_name_with_spaces() {
+        let input = r#"participant OSD Frontend
+participant OSD Backend
+OSD Frontend->OSD Backend: API Request
+OSD Backend-->OSD Frontend: Response"#;
+        let result = parse(input).unwrap();
+        assert_eq!(result.items.len(), 4);
+
+        // Check participant declarations
+        match &result.items[0] {
+            Item::ParticipantDecl { name, alias, kind } => {
+                assert_eq!(name, "OSD Frontend");
+                assert_eq!(*alias, None);
+                assert_eq!(*kind, ParticipantKind::Participant);
+            }
+            _ => panic!("Expected ParticipantDecl"),
+        }
+        match &result.items[1] {
+            Item::ParticipantDecl { name, alias, kind } => {
+                assert_eq!(name, "OSD Backend");
+                assert_eq!(*alias, None);
+                assert_eq!(*kind, ParticipantKind::Participant);
+            }
+            _ => panic!("Expected ParticipantDecl"),
+        }
+
+        // Check messages with spaces in participant names
+        match &result.items[2] {
+            Item::Message { from, to, text, .. } => {
+                assert_eq!(from, "OSD Frontend");
+                assert_eq!(to, "OSD Backend");
+                assert_eq!(text, "API Request");
+            }
+            _ => panic!("Expected Message"),
+        }
+        match &result.items[3] {
+            Item::Message { from, to, text, .. } => {
+                assert_eq!(from, "OSD Backend");
+                assert_eq!(to, "OSD Frontend");
+                assert_eq!(text, "Response");
+            }
+            _ => panic!("Expected Message"),
+        }
+    }
+
+    // Test: Participant declaration with spaces and alias
+    #[test]
+    fn test_participant_with_spaces_and_alias() {
+        let input = "participant My Service Name as MSN";
+        let result = parse(input).unwrap();
+        assert_eq!(result.items.len(), 1);
+        match &result.items[0] {
+            Item::ParticipantDecl { name, alias, .. } => {
+                assert_eq!(name, "My Service Name");
+                assert_eq!(alias.as_deref(), Some("MSN"));
+            }
+            _ => panic!("Expected ParticipantDecl"),
         }
     }
 }

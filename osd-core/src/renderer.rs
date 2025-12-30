@@ -125,6 +125,8 @@ struct RenderState {
     parallel_depth: usize,
     /// Tracks message label bounding boxes to avoid overlap
     message_label_boxes: Vec<LabelBox>,
+    /// Collected destroy X marks for deferred rendering (above activations)
+    destroy_marks: Vec<(f64, f64)>,
 }
 
 // ============================================
@@ -166,9 +168,14 @@ const NOTE_LINE_HEIGHT: f64 = 17.0;              // Line height (font 13px + 4px
 const NOTE_MIN_WIDTH: f64 = 50.0;                // Minimum width
 
 // ============================================
-// Other elements
+// State box
 // ============================================
 const STATE_LINE_HEIGHT_EXTRA: f64 = 11.0;       // Extra line height for state
+const STATE_PADDING: f64 = 12.0;                 // Padding inside state box (left/right/top/bottom)
+
+// ============================================
+// Ref box
+// ============================================
 const REF_LINE_HEIGHT_EXTRA: f64 = 16.0;         // Extra line height for ref
 
 // ============================================
@@ -291,9 +298,11 @@ fn note_y_advance(config: &Config, line_count: usize) -> f64 {
 
 /// Calculate Y advancement for a state box
 fn state_y_advance(config: &Config, line_count: usize) -> f64 {
-    let box_height = ELEMENT_PADDING * 2.0 + line_count as f64 * state_line_height(config);
-    // Group height (state box) + group spacing + next message text offset
-    box_height + group_spacing(config) + MESSAGE_TEXT_ABOVE_ARROW
+    let box_height = STATE_PADDING * 2.0 + line_count as f64 * state_line_height(config);
+    // Group height (state box) + group spacing
+    // Note: Don't add MESSAGE_TEXT_ABOVE_ARROW here because states use item_pre_shift
+    // which already accounts for visual alignment with messages
+    box_height + group_spacing(config)
 }
 
 /// Calculate Y advancement for a ref box
@@ -632,14 +641,17 @@ fn calculate_participant_gaps(
                             // Delay coefficient 86.4 for WSD gap matching (645px for delay(7))
                             let delay_extra = arrow.delay.map(|d| d as f64 * 86.4).unwrap_or(0.0);
 
-                            // WSD: distribute text width across gaps with appropriate spacing
+                            // Ensure message text fits between participants with padding
+                            // Account for activation bars (8px width on each side) and text centering
                             let gap_count = (max_idx - min_idx) as f64;
+                            let activation_space = 40.0; // Space for activation bars on both sides
+                            let text_padding = 40.0; // Padding on each side of text
                             let needed_gap = if gap_count == 1.0 {
-                                // Adjacent: text width minus overlap allowance
-                                text_width - 36.0 + delay_extra
+                                // Adjacent: text width plus padding plus activation bar space
+                                text_width + text_padding + activation_space + delay_extra
                             } else {
                                 // Non-adjacent: distribute evenly with margin
-                                text_width / gap_count - 20.0 + delay_extra
+                                (text_width + text_padding + activation_space) / gap_count + delay_extra
                             };
 
                             // Update gaps between the participants
@@ -891,6 +903,7 @@ impl RenderState {
             serial_first_row_pending: Vec::new(),
             parallel_depth: 0,
             message_label_boxes: Vec::new(),
+            destroy_marks: Vec::new(),
         }
     }
 
@@ -1904,18 +1917,23 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
     // Reset current_y for actual rendering
     state.current_y = state.content_start();
 
+    // Pre-calculate destroyed participants for lifeline rendering
+    let destroyed_map = collect_destroyed(&diagram.items, &state.config, state.content_start());
+
     // Draw lifelines (behind messages but above block backgrounds)
     let lifeline_start = header_y + state.config.header_height;
     let lifeline_end = footer_y;
 
     for p in &state.participants {
         let x = state.get_x(p.id());
+        // If participant is destroyed, end lifeline at destroy position
+        let end_y = destroyed_map.get(p.id()).copied().unwrap_or(lifeline_end);
         writeln!(
             &mut svg,
             r#"<line x1="{x}" y1="{y1}" x2="{x}" y2="{y2}" class="lifeline"/>"#,
             x = x,
             y1 = lifeline_start,
-            y2 = lifeline_end
+            y2 = end_y
         )
         .unwrap();
     }
@@ -1930,13 +1948,17 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
     // Draw activation bars
     render_activations(&mut svg, &mut state, footer_y);
 
+    // Draw destroy X marks AFTER activations so they appear on top
+    render_destroy_marks(&mut svg, &state);
+
     // Draw block labels AFTER activations so they appear on top
     render_block_labels(&mut svg, &state);
 
     // Draw participant footers based on footer style option
+    // Note: destroyed participants should NOT have footers
     match state.footer_style {
         FooterStyle::Box => {
-            render_participant_headers(&mut svg, &state, footer_y);
+            render_participant_footers(&mut svg, &state, footer_y);
         }
         FooterStyle::Bar => {
             // Draw simple horizontal line across all participants
@@ -2181,6 +2203,74 @@ fn calculate_height(items: &[Item], config: &Config, depth: usize) -> f64 {
     )
 }
 
+/// Pre-calculate destroyed participants and their Y positions
+/// This is needed because lifelines are drawn before render_items processes Item::Destroy
+fn collect_destroyed(items: &[Item], config: &Config, start_y: f64) -> HashMap<String, f64> {
+    fn inner(
+        items: &[Item],
+        config: &Config,
+        current_y: &mut f64,
+        destroyed: &mut HashMap<String, f64>,
+    ) {
+        for item in items {
+            match item {
+                Item::Message { from, to, text, arrow, .. } => {
+                    let is_self = from == to;
+                    let line_count = text.split("\\n").count();
+                    let delay_offset = arrow.delay.map(|d| d as f64 * DELAY_UNIT).unwrap_or(0.0);
+                    if is_self {
+                        *current_y += self_message_y_advance(config, line_count) + delay_offset;
+                    } else {
+                        *current_y += regular_message_y_advance(config, line_count, delay_offset);
+                    }
+                }
+                Item::Note { text, .. } => {
+                    let line_count = text.split("\\n").count();
+                    *current_y += note_y_advance(config, line_count);
+                }
+                Item::State { text, .. } => {
+                    let line_count = text.split("\\n").count();
+                    *current_y += state_y_advance(config, line_count);
+                }
+                Item::Ref { .. } => {
+                    *current_y += ref_y_advance(config, 1);
+                }
+                Item::Description { text, .. } => {
+                    let line_count = text.split("\\n").count();
+                    *current_y += description_y_advance(config, line_count);
+                }
+                Item::Destroy { participant } => {
+                    // destroy_y is at the previous message position
+                    let destroy_y = *current_y - config.row_height;
+                    destroyed.insert(participant.clone(), destroy_y);
+                    *current_y += config.row_height;
+                }
+                Item::Block { items, else_sections, kind, .. } => {
+                    if block_has_frame(kind) {
+                        *current_y += block_header_space(config, 0);
+                    }
+                    inner(items, config, current_y, destroyed);
+                    for else_section in else_sections {
+                        if block_has_frame(kind) {
+                            *current_y += block_else_before(config, 0) + block_else_after(config, 0);
+                        }
+                        inner(&else_section.items, config, current_y, destroyed);
+                    }
+                    if block_has_frame(kind) {
+                        *current_y += block_end_y_advance(config, 0);
+                    }
+                }
+                Item::Activate { .. } | Item::Deactivate { .. } | Item::Autonumber { .. } | Item::ParticipantDecl { .. } | Item::DiagramOption { .. } => {}
+            }
+        }
+    }
+
+    let mut destroyed = HashMap::new();
+    let mut current_y = start_y;
+    inner(items, config, &mut current_y, &mut destroyed);
+    destroyed
+}
+
 fn render_participant_headers(svg: &mut String, state: &RenderState, y: f64) {
     let shape = state.config.theme.participant_shape;
 
@@ -2376,6 +2466,201 @@ fn render_participant_headers(svg: &mut String, state: &RenderState, y: f64) {
     }
 }
 
+/// Render participant footers, skipping destroyed participants
+fn render_participant_footers(svg: &mut String, state: &RenderState, y: f64) {
+    let shape = state.config.theme.participant_shape;
+
+    for p in &state.participants {
+        // Skip destroyed participants - they should not have footers
+        if state.destroyed.contains_key(p.id()) {
+            continue;
+        }
+
+        let x = state.get_x(p.id());
+        let p_width = state.get_participant_width(p.id());
+        let box_x = x - p_width / 2.0;
+
+        match p.kind {
+            ParticipantKind::Participant => {
+                // Draw shape based on theme
+                match shape {
+                    ParticipantShape::Rectangle => {
+                        writeln!(
+                            svg,
+                            r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" class="participant"/>"#,
+                            x = box_x,
+                            y = y,
+                            w = p_width,
+                            h = state.config.header_height
+                        )
+                        .unwrap();
+                    }
+                    ParticipantShape::RoundedRect => {
+                        writeln!(
+                            svg,
+                            r#"<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="8" ry="8" class="participant"/>"#,
+                            x = box_x,
+                            y = y,
+                            w = p_width,
+                            h = state.config.header_height
+                        )
+                        .unwrap();
+                    }
+                    ParticipantShape::Circle => {
+                        let r = state.config.header_height / 2.0;
+                        writeln!(
+                            svg,
+                            r#"<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" class="participant"/>"#,
+                            cx = x,
+                            cy = y + r,
+                            rx = p_width / 2.0,
+                            ry = r
+                        )
+                        .unwrap();
+                    }
+                }
+                // Draw participant name
+                let lines: Vec<&str> = p.name.split("\\n").collect();
+                let line_height = state.config.font_size + 2.0;
+                let total_text_height = lines.len() as f64 * line_height;
+                let text_start_y = y + (state.config.header_height - total_text_height) / 2.0 + state.config.font_size;
+
+                if lines.len() == 1 {
+                    writeln!(
+                        svg,
+                        r#"<text x="{x}" y="{y}" class="participant-text">{name}</text>"#,
+                        x = x,
+                        y = text_start_y,
+                        name = escape_xml(&p.name)
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(svg, r#"<text x="{x}" class="participant-text">"#, x = x).unwrap();
+                    for (i, line) in lines.iter().enumerate() {
+                        if i == 0 {
+                            writeln!(
+                                svg,
+                                r#"<tspan x="{x}" y="{y}">{text}</tspan>"#,
+                                x = x,
+                                y = text_start_y,
+                                text = escape_xml(line)
+                            )
+                            .unwrap();
+                        } else {
+                            writeln!(
+                                svg,
+                                r#"<tspan x="{x}" dy="{dy}">{text}</tspan>"#,
+                                x = x,
+                                dy = line_height,
+                                text = escape_xml(line)
+                            )
+                            .unwrap();
+                        }
+                    }
+                    writeln!(svg, "</text>").unwrap();
+                }
+            }
+            ParticipantKind::Actor => {
+                // For actors, draw stick figure as footer too
+                let head_r = 8.0;
+                let body_len = 12.0;
+                let arm_len = 10.0;
+                let leg_len = 10.0;
+                let figure_height = 38.0;
+                let fig_top = y + 8.0;
+                let fig_center_y = fig_top + head_r + body_len / 2.0;
+                let arm_y = fig_center_y + 2.0;
+
+                // Head
+                writeln!(
+                    svg,
+                    r#"<circle cx="{x}" cy="{cy}" r="{r}" class="actor-head"/>"#,
+                    x = x,
+                    cy = fig_center_y - body_len / 2.0 - head_r,
+                    r = head_r
+                )
+                .unwrap();
+                // Body
+                writeln!(
+                    svg,
+                    r#"<line x1="{x}" y1="{y1}" x2="{x}" y2="{y2}" class="actor-body"/>"#,
+                    x = x,
+                    y1 = fig_center_y - body_len / 2.0,
+                    y2 = fig_center_y + body_len / 2.0
+                )
+                .unwrap();
+                // Arms
+                writeln!(
+                    svg,
+                    r#"<line x1="{x1}" y1="{y}" x2="{x2}" y2="{y}" class="actor-body"/>"#,
+                    x1 = x - arm_len,
+                    y = arm_y,
+                    x2 = x + arm_len
+                )
+                .unwrap();
+                // Left leg
+                writeln!(
+                    svg,
+                    r#"<line x1="{x}" y1="{y1}" x2="{x2}" y2="{y2}" class="actor-body"/>"#,
+                    x = x,
+                    y1 = fig_center_y + body_len / 2.0,
+                    x2 = x - leg_len * 0.6,
+                    y2 = fig_center_y + body_len / 2.0 + leg_len
+                )
+                .unwrap();
+                // Right leg
+                writeln!(
+                    svg,
+                    r#"<line x1="{x}" y1="{y1}" x2="{x2}" y2="{y2}" class="actor-body"/>"#,
+                    x = x,
+                    y1 = fig_center_y + body_len / 2.0,
+                    x2 = x + leg_len * 0.6,
+                    y2 = fig_center_y + body_len / 2.0 + leg_len
+                )
+                .unwrap();
+                // Name below figure
+                let name_lines: Vec<&str> = p.name.split("\\n").collect();
+                let name_start_y = fig_top + figure_height + 5.0;
+                if name_lines.len() == 1 {
+                    writeln!(
+                        svg,
+                        r#"<text x="{x}" y="{y}" class="participant-text">{name}</text>"#,
+                        x = x,
+                        y = name_start_y + state.config.font_size,
+                        name = escape_xml(&p.name)
+                    )
+                    .unwrap();
+                } else {
+                    let line_height = state.config.font_size + 2.0;
+                    writeln!(svg, r#"<text x="{x}" class="participant-text">"#, x = x).unwrap();
+                    for (i, line) in name_lines.iter().enumerate() {
+                        if i == 0 {
+                            writeln!(
+                                svg,
+                                r#"<tspan x="{x}" y="{y}">{text}</tspan>"#,
+                                x = x,
+                                y = name_start_y + state.config.font_size,
+                                text = escape_xml(line)
+                            )
+                            .unwrap();
+                        } else {
+                            writeln!(
+                                svg,
+                                r#"<tspan x="{x}" dy="{dy}">{text}</tspan>"#,
+                                x = x,
+                                dy = line_height,
+                                text = escape_xml(line)
+                            )
+                            .unwrap();
+                        }
+                    }
+                    writeln!(svg, "</text>").unwrap();
+                }
+            }
+        }
+    }
+}
+
 fn render_items(svg: &mut String, state: &mut RenderState, items: &[Item], depth: usize) {
     for item in items {
         match item {
@@ -2439,31 +2724,18 @@ fn render_items(svg: &mut String, state: &mut RenderState, items: &[Item], depth
                 // After a message, current_y is incremented by row_height, so we subtract it back
                 let destroy_y = state.current_y - state.config.row_height;
                 state.destroyed.insert(participant.clone(), destroy_y);
-                // Draw X mark on the lifeline
+
+                // Close all open activations for this participant at destroy_y
+                if let Some(acts) = state.activations.get_mut(participant) {
+                    for act in acts.iter_mut() {
+                        if act.1.is_none() {
+                            act.1 = Some(destroy_y);
+                        }
+                    }
+                }
+                // Collect X mark position for deferred rendering (above activations)
                 let x = state.get_x(participant);
-                let y = destroy_y;
-                let size = 15.0; // WSD uses 15px for X mark size
-                let theme = &state.config.theme;
-                writeln!(
-                    svg,
-                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2"/>"#,
-                    x1 = x - size,
-                    y1 = y - size,
-                    x2 = x + size,
-                    y2 = y + size,
-                    stroke = theme.message_color
-                )
-                .unwrap();
-                writeln!(
-                    svg,
-                    r#"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{stroke}" stroke-width="2"/>"#,
-                    x1 = x + size,
-                    y1 = y - size,
-                    x2 = x - size,
-                    y2 = y + size,
-                    stroke = theme.message_color
-                )
-                .unwrap();
+                state.destroy_marks.push((x, destroy_y));
                 state.current_y += state.config.row_height;
             }
             Item::Autonumber { enabled, start } => {
@@ -2569,11 +2841,21 @@ fn render_message(
 
     if is_self {
         // Self message - loop back
+        // For self-messages, always use right edge of activation bar (loop extends to the right)
+        // Check if already active OR if this message starts a new activation
+        let is_active = state.is_participant_active_at(from, y) || activate;
+        let activation_offset = if is_active {
+            state.config.activation_width / 2.0
+        } else {
+            0.0
+        };
+        let loop_anchor_x = base_x1 + activation_offset;
+
         let loop_width = 40.0;
         let text_block_height = lines.len() as f64 * line_height;
         // WSD: loop height equals text block height, no extra padding
         let loop_height = text_block_height.max(25.0);
-        let arrow_end_x = x1;
+        let arrow_end_x = loop_anchor_x;
         let arrow_end_y = y + loop_height;
         // Arrowhead points left (PI radians)
         let direction = std::f64::consts::PI;
@@ -2582,9 +2864,9 @@ fn render_message(
         writeln!(
             svg,
             r#"  <path d="M {x1} {y} L {x2} {y} L {x2} {y2} L {arrow_x} {y2}" class="{cls}"/>"#,
-            x1 = x1,
+            x1 = loop_anchor_x,
             y = y,
-            x2 = x1 + loop_width,
+            x2 = loop_anchor_x + loop_width,
             y2 = y + loop_height,
             arrow_x = arrow_end_x + ARROWHEAD_SIZE,
             cls = line_class
@@ -2609,8 +2891,10 @@ fn render_message(
         }
 
         // Text - multiline support
-        // Self-message text is positioned to the LEFT of the loop with right-alignment
-        let text_x = x1 - 5.0;
+        // Self-message text is positioned to the LEFT of the activation bar with right-alignment
+        // Add padding from activation bar if present
+        let text_padding = if is_active { 8.0 } else { 5.0 };
+        let text_x = base_x1 - activation_offset - text_padding;
         for (i, line) in lines.iter().enumerate() {
             let line_y = y + 4.0 + (i as f64 + 0.5) * line_height;
             writeln!(
@@ -2802,11 +3086,14 @@ fn render_note(
                 (x, content_width, "middle")
             } else {
                 // Span multiple participants
+                // Use min/max to handle any order of participants in the syntax
                 let x1 = state.get_x(&participants[0]);
                 let x2 = state.get_x(participants.last().unwrap());
-                let span_width = (x2 - x1).abs() + NOTE_MARGIN * 2.0;
+                let left_x = x1.min(x2);
+                let right_x = x1.max(x2);
+                let span_width = (right_x - left_x) + NOTE_MARGIN * 2.0;
                 let w = span_width.max(content_width);
-                let x = (x1 - NOTE_MARGIN).max(state.config.padding);
+                let x = (left_x - NOTE_MARGIN).max(state.config.padding);
                 (x, w, "middle")
             }
         }
@@ -2877,13 +3164,13 @@ fn render_state(svg: &mut String, state: &mut RenderState, participants: &[Strin
     let theme = &state.config.theme;
     let lines: Vec<&str> = text.split("\\n").collect();
     let line_height = state_line_height(&state.config);
-    let box_height = state.config.note_padding * 2.0 + lines.len() as f64 * line_height;
+    let box_height = STATE_PADDING * 2.0 + lines.len() as f64 * line_height;
 
     // Calculate box position and width
     let (x, box_width) = if participants.len() == 1 {
         let px = state.get_x(&participants[0]);
         let max_line_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(8);
-        let w = (max_line_len as f64 * 8.0 + state.config.note_padding * 2.0).max(60.0);
+        let w = (max_line_len as f64 * 8.0 + STATE_PADDING * 2.0).max(60.0);
         (px - w / 2.0, w)
     } else {
         let x1 = state.get_x(&participants[0]);
@@ -2893,8 +3180,8 @@ fn render_state(svg: &mut String, state: &mut RenderState, participants: &[Strin
         (center - span_width / 2.0, span_width)
     };
 
-    let shift = item_pre_shift(&state.config);
-    let y = (state.current_y - shift).max(state.content_start());
+    // Don't use item_pre_shift for states - render at current_y for consistent spacing
+    let y = state.current_y.max(state.content_start());
 
     // Draw rounded rectangle
     writeln!(
@@ -2912,7 +3199,7 @@ fn render_state(svg: &mut String, state: &mut RenderState, participants: &[Strin
     // Draw text
     let text_x = x + box_width / 2.0;
     for (i, line) in lines.iter().enumerate() {
-        let text_y = y + state.config.note_padding + (i as f64 + 0.8) * line_height;
+        let text_y = y + STATE_PADDING + (i as f64 + 0.8) * line_height;
         writeln!(
             svg,
             r##"<text x="{x}" y="{y}" text-anchor="middle" fill="{fill}" font-family="{font}" font-size="{size}px">{t}</text>"##,
@@ -3263,6 +3550,32 @@ fn render_activations(svg: &mut String, state: &mut RenderState, footer_y: f64) 
                 .unwrap();
             }
         }
+    }
+}
+
+/// Render destroy X marks (drawn after activations so they appear on top)
+fn render_destroy_marks(svg: &mut String, state: &RenderState) {
+    let size = 15.0; // X mark size
+    for (x, y) in &state.destroy_marks {
+        // Draw red X mark
+        writeln!(
+            svg,
+            r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#cc0000" stroke-width="2"/>"##,
+            x1 = x - size,
+            y1 = y - size,
+            x2 = x + size,
+            y2 = y + size
+        )
+        .unwrap();
+        writeln!(
+            svg,
+            r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#cc0000" stroke-width="2"/>"##,
+            x1 = x + size,
+            y1 = y - size,
+            x2 = x - size,
+            y2 = y + size
+        )
+        .unwrap();
     }
 }
 
