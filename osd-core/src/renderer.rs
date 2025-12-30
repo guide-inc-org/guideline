@@ -1007,7 +1007,19 @@ impl RenderState {
     }
 
     fn diagram_width(&self) -> f64 {
-        self.total_width
+        // Consider block labels that may extend beyond participant-based width
+        let max_block_x2 = self
+            .block_labels
+            .iter()
+            .map(|bl| bl.x2)
+            .fold(0.0f64, |a, b| a.max(b));
+        // Add right margin for blocks
+        let block_width = if max_block_x2 > 0.0 {
+            max_block_x2 + self.config.padding
+        } else {
+            0.0
+        };
+        self.total_width.max(block_width)
     }
 
     /// Get the x position of the leftmost participant
@@ -1229,6 +1241,7 @@ fn calculate_block_bounds_with_label(
     items: &[Item],
     else_items: Option<&[Item]>,
     label: &str,
+    else_label: Option<&str>,
     kind: &str,
     depth: usize,
     state: &RenderState,
@@ -1265,7 +1278,24 @@ fn calculate_block_bounds_with_label(
             (estimate_text_width(&condition_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
         base_width + label_padding_x * 2.0
     };
-    let min_label_width = pentagon_width + 8.0 + condition_width + 20.0; // Extra right margin
+
+    // Calculate else label width (else label starts at same X as condition label)
+    let else_label_width = if let Some(el) = else_label {
+        if !el.is_empty() {
+            let else_text = format!("[{}]", el);
+            let base_width =
+                (estimate_text_width(&else_text, label_font_size) - TEXT_WIDTH_PADDING).max(0.0);
+            base_width + label_padding_x * 2.0
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    };
+
+    // Use the wider of the two labels
+    let max_label_content_width = condition_width.max(else_label_width);
+    let min_label_width = pentagon_width + 8.0 + max_label_content_width + 20.0; // Extra right margin
 
     // Ensure block is wide enough for the label
     let current_width = base_x2 - base_x1;
@@ -1435,6 +1465,7 @@ fn collect_block_backgrounds(
                     items,
                     else_items.as_deref(),
                     label,
+                    else_label.as_deref(),
                     kind.as_str(),
                     depth,
                     state,
@@ -1655,6 +1686,12 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
         + footer_margin
         + footer_space;
     let total_height = base_total_height + footer_label_extra;
+
+    // Pre-calculate block backgrounds to determine max width (before SVG header)
+    state.current_y = state.content_start();
+    let mut active_activation_count = 0;
+    collect_block_backgrounds(&mut state, &diagram.items, 0, &mut active_activation_count);
+
     let total_width = state.diagram_width();
 
     // SVG header
@@ -1818,12 +1855,8 @@ pub fn render_with_config(diagram: &Diagram, config: Config) -> String {
         FooterStyle::Bar | FooterStyle::None => total_height - state.config.padding,
     };
 
-    // Pre-calculate block backgrounds (dry run)
-    state.current_y = state.content_start();
-    let mut active_activation_count = 0;
-    collect_block_backgrounds(&mut state, &diagram.items, 0, &mut active_activation_count);
-
     // Draw block backgrounds FIRST (behind lifelines)
+    // (block_backgrounds already calculated above for width calculation)
     render_block_backgrounds(&mut svg, &state);
 
     // Reset current_y for actual rendering
